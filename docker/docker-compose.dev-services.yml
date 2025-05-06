@@ -1,0 +1,139 @@
+services:
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=test-dev
+      - POSTGRES_USER=test-dev
+      - POSTGRES_PASSWORD=TWJUMgIiiYOj5s5oNJxQ0g==
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - launchkit_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-launchkit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+    networks:
+      - launchkit_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=test-dev
+      - RABBITMQ_DEFAULT_PASS=password
+    networks:
+      - launchkit_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  
+  api:
+    image: python:3.10
+    volumes:
+      - ../api:/app
+      - media:/app/media
+      - static:/app/static
+    env_file:
+      - ../.env
+    environment:
+      - DJANGO_ENV=development
+      - DEBUG=True
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=test-dev
+      - POSTGRES_USER=test-dev
+      - POSTGRES_PASSWORD=TWJUMgIiiYOj5s5oNJxQ0g==
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://test-dev:password@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    working_dir: /app
+    command: ["sh", "-c", "pip install -r requirements/dev.txt && python manage.py runserver 0.0.0.0:8000"]
+    networks:
+      - launchkit_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+  
+  worker:
+    image: python:3.10
+    volumes:
+      - ../api:/app
+      - media:/app/media
+    env_file:
+      - ../.env
+    environment:
+      - DJANGO_ENV=development
+      - DEBUG=True
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=test-dev
+      - POSTGRES_USER=test-dev
+      - POSTGRES_PASSWORD=TWJUMgIiiYOj5s5oNJxQ0g==
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://test-dev:password@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    working_dir: /app
+    command: ["sh", "-c", "pip install -r requirements/dev.txt && celery -A project worker --loglevel=info"]
+    networks:
+      - launchkit_network
+    depends_on:
+      api:
+        condition: service_started
+  
+  scheduler:
+    image: python:3.10
+    volumes:
+      - ../api:/app
+    env_file:
+      - ../.env
+    environment:
+      - DJANGO_ENV=development
+      - DEBUG=True
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=test-dev
+      - POSTGRES_USER=test-dev
+      - POSTGRES_PASSWORD=TWJUMgIiiYOj5s5oNJxQ0g==
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://test-dev:password@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    working_dir: /app
+    command: ["sh", "-c", "pip install -r requirements/dev.txt && celery -A project beat --loglevel=info"]
+    networks:
+      - launchkit_network
+    depends_on:
+      api:
+        condition: service_started
+
+networks:
+  launchkit_network:
+    driver: bridge
+
+volumes:
+  pgdata:
+  media:
+  static:

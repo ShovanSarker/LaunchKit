@@ -1,0 +1,23 @@
+{
+  "users": [
+    {
+      "name": "test-dev",
+      "password": "OYBM9NHI7pe8oPBj6j5bJA==",
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "test-dev",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ]
+}
