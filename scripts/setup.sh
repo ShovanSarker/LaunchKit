@@ -100,7 +100,7 @@ check_dependencies() {
 generate_random_string() {
   length=${1:-50}
   # Exclude problematic characters like <, >, |, etc. that can cause issues with sed
-  LC_ALL=C tr -dc 'a-zA-Z0-9!@#$%^&*()_+{}=' < /dev/urandom | head -c${length}
+  LC_ALL=C tr -dc 'a-zA-Z0-9!@' < /dev/urandom | head -c${length}
 }
 
 # Check if files already exist
@@ -292,6 +292,11 @@ apply_environment_config() {
   app_env_template="${TEMPLATES_DIR}/env/${ENVIRONMENT}/app.env.template"
   apply_template "$app_env_template" "${PROJECT_ROOT}/app/.env.local"
   
+  # Apply RabbitMQ definitions template
+  if [ -f "${PROJECT_ROOT}/docker/rabbitmq/definitions.json.template" ]; then
+    apply_template "${PROJECT_ROOT}/docker/rabbitmq/definitions.json.template" "${PROJECT_ROOT}/docker/rabbitmq/definitions.json"
+  fi
+  
   # Create main .env for Docker Compose
   # This is just a subset of variables needed by Docker Compose
   cat > "${PROJECT_ROOT}/.env" << EOF
@@ -329,17 +334,10 @@ start_services() {
   if [[ "$start_choice" =~ ^[Yy]$ ]]; then
     print_message "Starting services..."
     cd "$PROJECT_ROOT"
-    docker compose up -d
+    docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.yml up -d
     
     print_success "Services started successfully!"
-    
-    print_message "Running migrations..."
-    docker compose exec api python manage.py migrate
-    
-    print_success "Migrations applied successfully!"
-    
-    print_message "Creating superuser..."
-    docker compose exec api python manage.py createsuperuser --noinput
+    print_message "Note: The API and application services are not yet available. Only infrastructure services are running."
   fi
 }
 

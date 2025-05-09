@@ -2,7 +2,7 @@
   "rabbit_version": "3.12.0",
   "users": [
     {
-      "name": "yproj",
+      "name": "%%PROJECT_SLUG%%",
       "password_hash": "%%RABBITMQ_PASSWORD_HASH%%",
       "hashing_algorithm": "rabbit_password_hashing_sha256",
       "tags": "administrator"
@@ -10,13 +10,13 @@
   ],
   "vhosts": [
     {
-      "name": "yproj"
+      "name": "%%PROJECT_SLUG%%"
     }
   ],
   "permissions": [
     {
-      "user": "yproj",
-      "vhost": "yproj",
+      "user": "%%PROJECT_SLUG%%",
+      "vhost": "%%PROJECT_SLUG%%",
       "configure": ".*",
       "write": ".*",
       "read": ".*"
