@@ -1,8 +1,8 @@
 {
   "users": [
     {
-      "name": "test-dev",
-      "password": "OYBM9NHI7pe8oPBj6j5bJA==",
+      "name": "launchkit",
+      "password": "EjFkk7cjpANzmumCr9d2Ww==",
       "tags": "administrator"
     }
   ],
@@ -13,7 +13,7 @@
   ],
   "permissions": [
     {
-      "user": "test-dev",
+      "user": "launchkit",
       "vhost": "/",
       "configure": ".*",
       "write": ".*",
