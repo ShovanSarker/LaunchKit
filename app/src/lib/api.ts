@@ -7,7 +7,7 @@ const isBrowser = typeof window !== 'undefined';
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -51,7 +51,7 @@ api.interceptors.response.use(
         }
         
         const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/auth/token/refresh/`,
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/token/refresh/`,
           { refresh: refreshToken },
           { withCredentials: true }
         );
@@ -83,7 +83,7 @@ api.interceptors.response.use(
 // Auth API functions
 export const authAPI = {
   login: async (username: string, password: string) => {
-    const response = await api.post('/auth/login/', { username, password });
+    const response = await api.post('/api/auth/login/', { username, password });
     if (isBrowser) {
       const { access, refresh } = response.data;
       localStorage.setItem('accessToken', access);
@@ -100,30 +100,30 @@ export const authAPI = {
   },
   
   register: async (userData: any) => {
-    return await api.post('/auth/register/', userData);
+    return await api.post('/api/auth/register/', userData);
   },
   
   resetPasswordEmail: async (email: string) => {
-    return await api.post('/auth/reset-password-email/', { email });
+    return await api.post('/api/auth/reset-password-email/', { email });
   },
   
   resetPassword: async (data: { token: string; uidb64: string; password: string; password2: string }) => {
-    return await api.post('/auth/reset-password/', data);
+    return await api.post('/api/auth/reset-password/', data);
   },
   
   changePassword: async (data: { old_password: string; new_password: string; new_password2: string }) => {
-    return await api.post('/auth/change-password/', data);
+    return await api.post('/api/auth/change-password/', data);
   },
 };
 
 // User API functions
 export const userAPI = {
   getProfile: async () => {
-    return await api.get('/auth/profile/');
+    return await api.get('/api/auth/profile/');
   },
   
   updateProfile: async (profileData: any) => {
-    return await api.patch('/auth/profile/update/', profileData);
+    return await api.patch('/api/auth/profile/update/', profileData);
   },
 };
 

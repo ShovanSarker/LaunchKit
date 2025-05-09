@@ -187,11 +187,22 @@ SIMPLE_JWT = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["http://localhost:3000"])
+CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=True)  # For development
+CORS_ALLOWED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+])
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF settings
-CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["http://localhost:3000"])
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
+    "http://localhost:3000",
+    "http://localhost:8000", 
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+])
 
 # Celery settings
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
