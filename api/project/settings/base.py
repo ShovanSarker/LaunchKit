@@ -240,7 +240,7 @@ AUTHENTICATION_BACKENDS = [
 
 # API Documentation
 SPECTACULAR_SETTINGS = {
-    "TITLE": "LaunchKit API",
+    "TITLE": env("PROJECT_NAME", default="LaunchKit") + " API",
     "DESCRIPTION": "API documentation for LaunchKit",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,

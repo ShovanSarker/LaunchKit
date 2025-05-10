@@ -553,28 +553,57 @@ set -e
 # Project root directory
 PROJECT_ROOT="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Project information
+PROJECT_NAME="${PROJECT_NAME}"
+PROJECT_SLUG="${PROJECT_SLUG}"
+
 # Color output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-echo -e "\${BLUE}[Run]${NC} Starting development environment..."
+echo -e "\${BLUE}[${PROJECT_NAME}]${NC} Starting development environment..."
+
+# Check if Docker is running
+if ! docker info > /dev/null 2>&1; then
+  echo -e "\${RED}[ERROR]${NC} Docker is not running. Please start Docker and try again."
+  exit 1
+fi
 
 # Start all services
-echo -e "\${BLUE}[Run]${NC} Starting all services (api, worker, scheduler, postgres, redis, rabbitmq)..."
+echo -e "\${BLUE}[${PROJECT_NAME}]${NC} Starting all containerized services..."
 cd "\${PROJECT_ROOT}/docker" && docker compose up -d
 
-echo -e "\${GREEN}[SUCCESS]${NC} Development environment is running!"
-echo -e "\${BLUE}[Run]${NC} API is available at: http://localhost:8000"
-echo -e "\${BLUE}[Run]${NC} API Documentation: http://localhost:8000/api/docs/"
-echo -e "\${BLUE}[Run]${NC} PostgreSQL is available at: localhost:5432"
-echo -e "\${BLUE}[Run]${NC} Redis is available at: localhost:6379"
-echo -e "\${BLUE}[Run]${NC} RabbitMQ is available at: localhost:5672 (admin: http://localhost:15672)"
+# Check if all containers are running
+if [ \$(docker ps --filter "name=${PROJECT_SLUG}" --format '{{.Names}}' | wc -l) -lt 5 ]; then
+  echo -e "\${YELLOW}[WARNING]${NC} Not all containers are running. Check logs for errors:"
+  echo "  docker logs ${PROJECT_SLUG}_postgres"
+  echo "  docker logs ${PROJECT_SLUG}_api"
+else
+  echo -e "\${GREEN}[SUCCESS]${NC} Development environment is running!"
+fi
 
-echo -e "\${BLUE}[Run]${NC} To view logs:"
-echo "  API:       docker logs -f \${PROJECT_SLUG}_api"
-echo "  Worker:    docker logs -f \${PROJECT_SLUG}_worker"
-echo "  Scheduler: docker logs -f \${PROJECT_SLUG}_scheduler"
+echo -e "\${BLUE}[INFO]${NC} Available Services:"
+echo "  → API:         http://localhost:8000"
+echo "  → API Docs:    http://localhost:8000/api/docs/"
+echo "  → PostgreSQL:  localhost:5432 (username: ${PROJECT_SLUG}, password: in .env file)"
+echo "  → Redis:       localhost:6379"
+echo "  → RabbitMQ:    localhost:5672 (admin: http://localhost:15672)"
+
+echo -e "\${BLUE}[INFO]${NC} Container Logs:"
+echo "  → API:       docker logs -f ${PROJECT_SLUG}_api"
+echo "  → Worker:    docker logs -f ${PROJECT_SLUG}_worker"
+echo "  → Scheduler: docker logs -f ${PROJECT_SLUG}_scheduler"
+echo "  → Database:  docker logs -f ${PROJECT_SLUG}_postgres"
+
+echo -e "\${BLUE}[INFO]${NC} Development Commands:"
+echo "  → Start Next.js App:  cd app && npm run dev"
+echo "  → Run Django Shell:   docker exec -it ${PROJECT_SLUG}_api python manage.py shell"
+echo "  → Run Migrations:     docker exec -it ${PROJECT_SLUG}_api python manage.py migrate"
+echo "  → Create Superuser:   docker exec -it ${PROJECT_SLUG}_api python manage.py createsuperuser"
+echo "  → Stop All Services:  cd docker && docker compose down"
 EOF
     chmod +x "$run_script"
     print_success "Created: $run_script"
@@ -583,20 +612,26 @@ EOF
 
 # Show next steps
 show_next_steps() {
-  print_message "Setup complete!"
+  print_message "Setup complete for ${PROJECT_NAME}!"
   print_message "Next steps:"
   echo "1. Start all services:"
   echo "   $ ./scripts/run_dev.sh"
   echo ""
-  echo "2. API will be available at: http://localhost:8000"
-  echo "   API Documentation: http://localhost:8000/api/docs/"
+  echo "2. Services available after startup:"
+  echo "   • API:         http://localhost:8000"
+  echo "   • API Docs:    http://localhost:8000/api/docs/"
+  echo "   • PostgreSQL:  localhost:5432 (username: ${PROJECT_SLUG}, password in .env file)"
+  echo "   • Redis:       localhost:6379"
+  echo "   • RabbitMQ:    localhost:5672 (admin UI: http://localhost:15672)"
   echo ""
-  echo "3. To view logs:"
-  echo "   API:       docker logs -f ${PROJECT_SLUG}_api"
-  echo "   Worker:    docker logs -f ${PROJECT_SLUG}_worker"
-  echo "   Scheduler: docker logs -f ${PROJECT_SLUG}_scheduler"
+  echo "3. Development tools:"
+  echo "   • Start Next.js app:  cd app && npm run dev"
+  echo "   • Run Django Shell:   docker exec -it ${PROJECT_SLUG}_api python manage.py shell"
+  echo "   • Create Superuser:   docker exec -it ${PROJECT_SLUG}_api python manage.py createsuperuser"
+  echo "   • View API logs:      docker logs -f ${PROJECT_SLUG}_api"
   echo ""
-  echo "4. To start the Next.js app (still runs locally):"
+  echo "4. For daily development, you just need to run:"
+  echo "   $ ./scripts/run_dev.sh"
   echo "   $ cd app && npm run dev"
 }
 
@@ -672,6 +707,10 @@ update_api_env_template() {
       cat > "$api_env_template" << EOF
 # API Environment - Development
 
+# Project Information
+PROJECT_NAME=%%PROJECT_NAME%%
+PROJECT_SLUG=%%PROJECT_SLUG%%
+
 # Django Settings
 DJANGO_ENV=development
 DEBUG=True
@@ -719,6 +758,10 @@ EOF
     # Create a new template
     cat > "$api_env_template" << EOF
 # API Environment - Development
+
+# Project Information
+PROJECT_NAME=%%PROJECT_NAME%%
+PROJECT_SLUG=%%PROJECT_SLUG%%
 
 # Django Settings
 DJANGO_ENV=development
@@ -823,6 +866,67 @@ EOF
   fi
 }
 
+# Update app env template
+update_app_env_template() {
+  print_message "Updating Next.js app environment template..."
+  
+  app_env_template="${TEMPLATES_DIR}/env/development/app.env.template"
+  
+  if [ -f "$app_env_template" ]; then
+    # Check if the file already contains project info
+    if ! grep -q "PROJECT_NAME" "$app_env_template"; then
+      # Create a new template with updated values
+      cat > "$app_env_template" << EOF
+# Next.js App Environment - Development
+
+# Project Information
+NEXT_PUBLIC_PROJECT_NAME=%%PROJECT_NAME%%
+NEXT_PUBLIC_PROJECT_SLUG=%%PROJECT_SLUG%%
+
+# API Settings
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_DOCS=http://localhost:8000/api/docs/
+
+# Authentication
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=%%SECRET_KEY%%
+NEXT_PUBLIC_JWT_AUTH_HEADER=Authorization
+NEXT_PUBLIC_JWT_REFRESH_TOKEN_NAME=refresh_token
+
+# Feature Flags
+NEXT_PUBLIC_FEATURE_REGISTRATION_ENABLED=true
+EOF
+      print_success "Updated: $app_env_template"
+    fi
+  else
+    # Create directory if it doesn't exist
+    mkdir -p "$(dirname "$app_env_template")"
+    
+    # Create a new template
+    cat > "$app_env_template" << EOF
+# Next.js App Environment - Development
+
+# Project Information
+NEXT_PUBLIC_PROJECT_NAME=%%PROJECT_NAME%%
+NEXT_PUBLIC_PROJECT_SLUG=%%PROJECT_SLUG%%
+
+# API Settings
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_DOCS=http://localhost:8000/api/docs/
+
+# Authentication
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=%%SECRET_KEY%%
+NEXT_PUBLIC_JWT_AUTH_HEADER=Authorization
+NEXT_PUBLIC_JWT_REFRESH_TOKEN_NAME=refresh_token
+
+# Feature Flags
+NEXT_PUBLIC_FEATURE_REGISTRATION_ENABLED=true
+EOF
+    print_success "Created: $app_env_template"
+  fi
+}
+
 # Main function
 main() {
   print_message "Development Environment Setup"
@@ -839,6 +943,7 @@ main() {
   
   # Update templates
   update_api_env_template
+  update_app_env_template
   update_docker_env_template
   
   # Setup environment

@@ -72,3 +72,7 @@ logs/
 # Databases
 *.sqlite3
 *.db 
+
+# Environement specific files
+docker/docker-compose.yml
+scripts/run_dev.sh
