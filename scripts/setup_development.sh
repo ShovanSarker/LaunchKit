@@ -33,7 +33,7 @@ TEMPLATES_DIR="${PROJECT_ROOT}/templates"
 # Generate random string for secrets
 generate_random_string() {
   length=${1:-50}
-  LC_ALL=C tr -dc 'a-zA-Z0-9!@#$%^&*()_+=' < /dev/urandom | head -c${length}
+  LC_ALL=C tr -dc 'a-zA-Z0-9!@$%^&*_+=' < /dev/urandom | head -c${length}
 }
 
 # Check if a file exists and ask before overwriting
@@ -45,6 +45,26 @@ check_file_exists() {
     return 1
   fi
   return 0
+}
+
+# Create file if it doesn't exist or append content if it does
+append_or_create_file() {
+  local file=$1
+  local content=$2
+  local should_append=${3:-false}
+  
+  # Create directory if it doesn't exist
+  mkdir -p "$(dirname "$file")"
+  
+  if [ "$should_append" = true ] && [ -f "$file" ]; then
+    # Append content to file
+    echo "$content" >> "$file"
+    print_success "Updated: $file"
+  else
+    # Create new file with content
+    echo "$content" > "$file"
+    print_success "Created: $file"
+  fi
 }
 
 # Get project info
@@ -121,23 +141,306 @@ setup_development() {
   app_env_file="${PROJECT_ROOT}/app/.env.local"
   apply_template "$app_env_template" "$app_env_file"
   
-  # Create Docker environment file
+  # Create Docker environment file in root
   docker_env_template="${TEMPLATES_DIR}/env/development/docker.env.template"
   docker_env_file="${PROJECT_ROOT}/.env"
   apply_template "$docker_env_template" "$docker_env_file"
+  
+  # Create Docker environment file in docker directory and ensure it exists
+  mkdir -p "${PROJECT_ROOT}/docker"
+  docker_dir_env_file="${PROJECT_ROOT}/docker/.env"
+  
+  # Check if docker/.env exists and if not, create it directly
+  if [ ! -f "$docker_dir_env_file" ]; then
+    print_message "Creating Docker environment file in docker directory..."
+    cat > "$docker_dir_env_file" << EOF
+# Docker Environment - Development
+
+# Project Settings
+PROJECT_NAME=${PROJECT_NAME}
+PROJECT_SLUG=${PROJECT_SLUG}
+
+# Database
+POSTGRES_DB=${PROJECT_SLUG}
+POSTGRES_USER=${PROJECT_SLUG}
+POSTGRES_PASSWORD=${DB_PASSWORD}
+
+# RabbitMQ
+RABBITMQ_DEFAULT_USER=${PROJECT_SLUG}
+RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+RABBITMQ_DEFAULT_VHOST=${PROJECT_SLUG}
+
+# Environment
+ENVIRONMENT=development
+EOF
+    print_success "Created: ${docker_dir_env_file}"
+  else
+    # Make sure we overwrite the existing file with current settings
+    cat > "$docker_dir_env_file" << EOF
+# Docker Environment - Development
+
+# Project Settings
+PROJECT_NAME=${PROJECT_NAME}
+PROJECT_SLUG=${PROJECT_SLUG}
+
+# Database
+POSTGRES_DB=${PROJECT_SLUG}
+POSTGRES_USER=${PROJECT_SLUG}
+POSTGRES_PASSWORD=${DB_PASSWORD}
+
+# RabbitMQ
+RABBITMQ_DEFAULT_USER=${PROJECT_SLUG}
+RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+RABBITMQ_DEFAULT_VHOST=${PROJECT_SLUG}
+
+# Environment
+ENVIRONMENT=development
+EOF
+    print_success "Updated: ${docker_dir_env_file}"
+  fi
+}
+
+# Update requirements files
+update_requirements() {
+  print_message "Updating requirements files..."
+  
+  # Create requirements directory if it doesn't exist
+  requirements_dir="${PROJECT_ROOT}/api/requirements"
+  mkdir -p "$requirements_dir"
+  
+  # Check base requirements
+  base_requirements="${requirements_dir}/base.txt"
+  if [ -f "$base_requirements" ]; then
+    print_message "Checking for missing base packages..."
+    
+    # List of packages that should be in base requirements
+    packages=(
+      "django-filter"
+      "djangorestframework-simplejwt"
+      "django-cors-headers"
+      "dj-database-url"
+      "django-axes"
+      "django-environ"
+      "django-storages"
+      "django-redis"
+      "drf-spectacular"
+      "psycopg2-binary"
+      "celery"
+      "redis"
+    )
+    
+    # Check for missing packages and add them if needed
+    for package in "${packages[@]}"; do
+      if ! grep -q "$package" "$base_requirements"; then
+        echo "# Added by setup script" >> "$base_requirements"
+        echo "$package" >> "$base_requirements"
+        print_success "Added $package to base requirements"
+      fi
+    done
+  else
+    # Create base requirements file
+    cat > "$base_requirements" << EOF
+# Django and Django REST Framework
+Django==4.2.10
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+django-filter==23.5
+drf-spectacular==0.27.0
+
+# Database
+psycopg2-binary==2.9.9
+dj-database-url==2.1.0
+
+# Environment & Settings
+python-dotenv==1.0.0
+django-environ==0.11.2
+
+# Authentication
+django-allauth==0.57.0
+dj-rest-auth==5.0.1
+djangorestframework-simplejwt==5.3.0
+django-axes==7.1.0
+
+# Cache & Sessions
+django-redis==5.4.0
+
+# Background Tasks
+celery==5.3.4
+redis==5.0.1
+django-celery-beat==2.5.0
+django-celery-results==2.5.1
+
+# Production
+gunicorn==21.2.0
+whitenoise==6.5.0
+
+# Utilities
+Pillow==10.1.0
+python-slugify==8.0.1
+argon2-cffi==23.1.0
+
+# Storage
+django-storages==1.14.2
+boto3==1.28.53
+EOF
+    print_success "Created: $base_requirements"
+  fi
+  
+  # Check dev requirements
+  dev_requirements="${requirements_dir}/dev.txt"
+  if [ -f "$dev_requirements" ]; then
+    print_message "Checking for missing dev packages..."
+    
+    # Check if -r base.txt is at the top
+    if ! grep -q "^-r base.txt" "$dev_requirements"; then
+      sed -i.bak '1s/^/-r base.txt\n\n/' "$dev_requirements"
+      rm -f "${dev_requirements}.bak"
+      print_success "Added -r base.txt to dev requirements"
+    fi
+    
+    # List of packages that should be in dev requirements
+    packages=(
+      "django-debug-toolbar"
+      "pytest"
+      "pytest-django"
+      "black"
+      "isort"
+      "watchdog"
+    )
+    
+    # Check for missing packages and add them if needed
+    for package in "${packages[@]}"; do
+      if ! grep -q "$package" "$dev_requirements"; then
+        echo "# Added by setup script" >> "$dev_requirements"
+        echo "$package" >> "$dev_requirements"
+        print_success "Added $package to dev requirements"
+      fi
+    done
+  else
+    # Create dev requirements file
+    cat > "$dev_requirements" << EOF
+-r base.txt
+
+# Development tools
+django-debug-toolbar==4.2.0
+black==24.2.0
+ruff==0.1.15
+isort==5.13.2
+djlint==1.34.1
+pytest==7.4.3
+pytest-django==4.7.0
+pytest-cov==4.1.0
+factory-boy==3.3.0
+Faker==22.5.0
+ipython==8.16.1
+watchdog==3.0.0
+EOF
+    print_success "Created: $dev_requirements"
+  fi
+  
+  # Check prod requirements
+  prod_requirements="${requirements_dir}/prod.txt"
+  if [ -f "$prod_requirements" ]; then
+    print_message "Checking for missing prod packages..."
+    
+    # Check if -r base.txt is at the top
+    if ! grep -q "^-r base.txt" "$prod_requirements"; then
+      sed -i.bak '1s/^/-r base.txt\n\n/' "$prod_requirements"
+      rm -f "${prod_requirements}.bak"
+      print_success "Added -r base.txt to prod requirements"
+    fi
+  else
+    # Create prod requirements file
+    cat > "$prod_requirements" << EOF
+-r base.txt
+
+# Production-specific packages
+django-storages[s3]==1.14.2
+whitenoise==6.6.0
+sentry-sdk==1.41.0
+django-csp==3.7
+EOF
+    print_success "Created: $prod_requirements"
+  fi
 }
 
 # Create docker-compose file
 create_docker_compose() {
   print_message "Creating Docker Compose file..."
   
-  docker_compose_file="${PROJECT_ROOT}/docker-compose.yml"
+  # Create docker directory if it doesn't exist
+  mkdir -p "${PROJECT_ROOT}/docker"
+  
+  docker_compose_file="${PROJECT_ROOT}/docker/docker-compose.yml"
   
   if check_file_exists "$docker_compose_file"; then
     cat > "$docker_compose_file" << EOF
-version: '3'
-
 services:
+  # API service
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_SLUG}_api
+    volumes:
+      - ../api:/app
+    env_file:
+      - ../api/.env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    ports:
+      - "8000:8000"
+    command: python manage.py runserver 0.0.0.0:8000
+
+  # Celery Worker
+  worker:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_SLUG}_worker
+    volumes:
+      - ../api:/app
+    env_file:
+      - ../api/.env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    command: celery -A project worker --loglevel=info
+
+  # Celery Beat Scheduler
+  scheduler:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_SLUG}_scheduler
+    volumes:
+      - ../api:/app
+    env_file:
+      - ../api/.env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    command: celery -A project beat --loglevel=info
+
   # Database service
   postgres:
     image: postgres:15-alpine
@@ -195,6 +498,46 @@ EOF
   fi
 }
 
+# Create entrypoint script
+create_entrypoint_script() {
+  print_message "Creating Docker entrypoint script..."
+  
+  entrypoint_script="${PROJECT_ROOT}/api/docker-entrypoint.sh"
+  
+  if check_file_exists "$entrypoint_script"; then
+    cat > "$entrypoint_script" << EOF
+#!/bin/bash
+
+set -e
+
+# Function to check if PostgreSQL is available
+postgres_ready() {
+    # Check if we can connect to PostgreSQL
+    PGPASSWORD=\$POSTGRES_PASSWORD psql -h \$POSTGRES_HOST -U \$POSTGRES_USER -d \$POSTGRES_DB -c "SELECT 1" >/dev/null 2>&1
+}
+
+# Wait for PostgreSQL to be available
+until postgres_ready; do
+    echo "PostgreSQL is unavailable - sleeping"
+    sleep 1
+done
+
+echo "PostgreSQL is up - executing command"
+
+# Apply migrations
+if [ "\$1" = "python" ] && [ "\$2" = "manage.py" ] && [ "\$3" = "runserver" ]; then
+    echo "Applying migrations..."
+    python manage.py migrate --noinput
+fi
+
+# Execute the passed command
+exec "\$@"
+EOF
+    chmod +x "$entrypoint_script"
+    print_success "Created: $entrypoint_script"
+  fi
+}
+
 # Create run script
 create_run_script() {
   print_message "Creating run script..."
@@ -217,23 +560,21 @@ NC='\033[0m'
 
 echo -e "\${BLUE}[Run]${NC} Starting development environment..."
 
-# Start database services
-echo -e "\${BLUE}[Run]${NC} Starting infrastructure services (postgres, redis, rabbitmq)..."
-docker compose up -d postgres redis rabbitmq
-
-# Wait for services to be ready
-echo -e "\${BLUE}[Run]${NC} Waiting for services to be ready..."
-sleep 5
+# Start all services
+echo -e "\${BLUE}[Run]${NC} Starting all services (api, worker, scheduler, postgres, redis, rabbitmq)..."
+cd "\${PROJECT_ROOT}/docker" && docker compose up -d
 
 echo -e "\${GREEN}[SUCCESS]${NC} Development environment is running!"
-echo -e "\${BLUE}[Run]${NC} To start the API, run: cd api && python manage.py runserver"
-echo -e "\${BLUE}[Run]${NC} To start the worker, run: cd api && celery -A project worker --loglevel=info"
-echo -e "\${BLUE}[Run]${NC} To start the scheduler, run: cd api && celery -A project beat --loglevel=info"
-echo -e "\${BLUE}[Run]${NC} To start the frontend, run: cd app && npm run dev"
-
+echo -e "\${BLUE}[Run]${NC} API is available at: http://localhost:8000"
+echo -e "\${BLUE}[Run]${NC} API Documentation: http://localhost:8000/api/docs/"
 echo -e "\${BLUE}[Run]${NC} PostgreSQL is available at: localhost:5432"
 echo -e "\${BLUE}[Run]${NC} Redis is available at: localhost:6379"
-echo -e "\${BLUE}[Run]${NC} RabbitMQ is available at: localhost:5672 (admin: localhost:15672)"
+echo -e "\${BLUE}[Run]${NC} RabbitMQ is available at: localhost:5672 (admin: http://localhost:15672)"
+
+echo -e "\${BLUE}[Run]${NC} To view logs:"
+echo "  API:       docker logs -f \${PROJECT_SLUG}_api"
+echo "  Worker:    docker logs -f \${PROJECT_SLUG}_worker"
+echo "  Scheduler: docker logs -f \${PROJECT_SLUG}_scheduler"
 EOF
     chmod +x "$run_script"
     print_success "Created: $run_script"
@@ -244,20 +585,242 @@ EOF
 show_next_steps() {
   print_message "Setup complete!"
   print_message "Next steps:"
-  echo "1. Start the infrastructure services:"
+  echo "1. Start all services:"
   echo "   $ ./scripts/run_dev.sh"
   echo ""
-  echo "2. Start the API server:"
-  echo "   $ cd api && python manage.py runserver"
+  echo "2. API will be available at: http://localhost:8000"
+  echo "   API Documentation: http://localhost:8000/api/docs/"
   echo ""
-  echo "3. Start the Celery worker:"
-  echo "   $ cd api && celery -A project worker --loglevel=info"
+  echo "3. To view logs:"
+  echo "   API:       docker logs -f ${PROJECT_SLUG}_api"
+  echo "   Worker:    docker logs -f ${PROJECT_SLUG}_worker"
+  echo "   Scheduler: docker logs -f ${PROJECT_SLUG}_scheduler"
   echo ""
-  echo "4. Start the Celery beat scheduler:"
-  echo "   $ cd api && celery -A project beat --loglevel=info"
-  echo ""
-  echo "5. Start the Next.js app:"
+  echo "4. To start the Next.js app (still runs locally):"
   echo "   $ cd app && npm run dev"
+}
+
+# Cleanup any existing files that are now in different locations
+cleanup_old_files() {
+  print_message "Cleaning up old files..."
+  
+  # Remove docker-compose.yml from root if it exists
+  if [ -f "${PROJECT_ROOT}/docker-compose.yml" ]; then
+    print_warning "Removing docker-compose.yml from root directory as it's now in the docker folder"
+    rm -f "${PROJECT_ROOT}/docker-compose.yml"
+  fi
+}
+
+# Create Dockerfile for API
+create_api_dockerfile() {
+  print_message "Creating Dockerfile for API..."
+  
+  dockerfile="${PROJECT_ROOT}/api/Dockerfile"
+  
+  if check_file_exists "$dockerfile"; then
+    cat > "$dockerfile" << EOF
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Set work directory
+WORKDIR /app
+
+# Install dependencies
+COPY requirements/ /app/requirements/
+
+# Install build dependencies and Python requirements
+RUN apt-get update \\
+    && apt-get install -y --no-install-recommends gcc python3-dev libpq-dev postgresql-client \\
+    && pip install --no-cache-dir -r requirements/dev.txt \\
+    && apt-get purge -y --auto-remove gcc python3-dev \\
+    && apt-get clean \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy entrypoint script first
+COPY docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
+# Copy project files
+COPY . /app/
+
+# Expose port
+EXPOSE 8000
+
+# Set entrypoint
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# Run command
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+EOF
+    print_success "Created: $dockerfile"
+  fi
+}
+
+# Update API env template
+update_api_env_template() {
+  print_message "Updating API environment template..."
+  
+  api_env_template="${TEMPLATES_DIR}/env/development/api.env.template"
+  
+  if [ -f "$api_env_template" ]; then
+    # Check if the file already contains necessary entries
+    if ! grep -q "DATABASE_URL" "$api_env_template"; then
+      # Create a new template with updated values
+      cat > "$api_env_template" << EOF
+# API Environment - Development
+
+# Django Settings
+DJANGO_ENV=development
+DEBUG=True
+DJANGO_SECRET_KEY=%%SECRET_KEY%%
+ALLOWED_HOSTS=localhost,127.0.0.1,api.localhost
+CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
+
+# Database
+POSTGRES_DB=%%PROJECT_SLUG%%
+POSTGRES_USER=%%PROJECT_SLUG%%
+POSTGRES_PASSWORD=%%DB_PASSWORD%%
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+# Django Database (used by Django ORM)
+DATABASE_URL=postgres://%%PROJECT_SLUG%%:%%DB_PASSWORD%%@postgres:5432/%%PROJECT_SLUG%%
+
+# Redis
+REDIS_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+# RabbitMQ
+CELERY_BROKER_URL=amqp://%%PROJECT_SLUG%%:%%RABBITMQ_PASSWORD%%@rabbitmq:5672/%%PROJECT_SLUG%%
+
+# Email (Development)
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+DEFAULT_FROM_EMAIL=noreply@%%PROJECT_SLUG%%.local
+
+# CORS
+CORS_ALLOW_ALL_ORIGINS=True
+
+# Frontend URL
+FRONTEND_URL=http://localhost:3000
+
+# JWT Settings
+JWT_ACCESS_TOKEN_LIFETIME=60
+JWT_REFRESH_TOKEN_LIFETIME=1440
+EOF
+      print_success "Updated: $api_env_template"
+    fi
+  else
+    # Create directory if it doesn't exist
+    mkdir -p "$(dirname "$api_env_template")"
+    
+    # Create a new template
+    cat > "$api_env_template" << EOF
+# API Environment - Development
+
+# Django Settings
+DJANGO_ENV=development
+DEBUG=True
+DJANGO_SECRET_KEY=%%SECRET_KEY%%
+ALLOWED_HOSTS=localhost,127.0.0.1,api.localhost
+CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
+
+# Database
+POSTGRES_DB=%%PROJECT_SLUG%%
+POSTGRES_USER=%%PROJECT_SLUG%%
+POSTGRES_PASSWORD=%%DB_PASSWORD%%
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+# Django Database (used by Django ORM)
+DATABASE_URL=postgres://%%PROJECT_SLUG%%:%%DB_PASSWORD%%@postgres:5432/%%PROJECT_SLUG%%
+
+# Redis
+REDIS_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+# RabbitMQ
+CELERY_BROKER_URL=amqp://%%PROJECT_SLUG%%:%%RABBITMQ_PASSWORD%%@rabbitmq:5672/%%PROJECT_SLUG%%
+
+# Email (Development)
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+DEFAULT_FROM_EMAIL=noreply@%%PROJECT_SLUG%%.local
+
+# CORS
+CORS_ALLOW_ALL_ORIGINS=True
+
+# Frontend URL
+FRONTEND_URL=http://localhost:3000
+
+# JWT Settings
+JWT_ACCESS_TOKEN_LIFETIME=60
+JWT_REFRESH_TOKEN_LIFETIME=1440
+EOF
+    print_success "Created: $api_env_template"
+  fi
+}
+
+# Update Docker env template
+update_docker_env_template() {
+  print_message "Updating Docker environment template..."
+  
+  docker_env_template="${TEMPLATES_DIR}/env/development/docker.env.template"
+  
+  if [ -f "$docker_env_template" ]; then
+    # Check if the file already contains RabbitMQ entries
+    if ! grep -q "RABBITMQ_DEFAULT_USER" "$docker_env_template"; then
+      # Create a new template with updated values
+      cat > "$docker_env_template" << EOF
+# Docker Environment - Development
+
+# Project Settings
+PROJECT_NAME=%%PROJECT_NAME%%
+PROJECT_SLUG=%%PROJECT_SLUG%%
+
+# Database
+POSTGRES_DB=%%PROJECT_SLUG%%
+POSTGRES_USER=%%PROJECT_SLUG%%
+POSTGRES_PASSWORD=%%DB_PASSWORD%%
+
+# RabbitMQ
+RABBITMQ_DEFAULT_USER=%%PROJECT_SLUG%%
+RABBITMQ_DEFAULT_PASS=%%RABBITMQ_PASSWORD%%
+RABBITMQ_DEFAULT_VHOST=%%PROJECT_SLUG%%
+
+# Environment
+ENVIRONMENT=development
+EOF
+      print_success "Updated: $docker_env_template"
+    fi
+  else
+    # Create directory if it doesn't exist
+    mkdir -p "$(dirname "$docker_env_template")"
+    
+    # Create a new template
+    cat > "$docker_env_template" << EOF
+# Docker Environment - Development
+
+# Project Settings
+PROJECT_NAME=%%PROJECT_NAME%%
+PROJECT_SLUG=%%PROJECT_SLUG%%
+
+# Database
+POSTGRES_DB=%%PROJECT_SLUG%%
+POSTGRES_USER=%%PROJECT_SLUG%%
+POSTGRES_PASSWORD=%%DB_PASSWORD%%
+
+# RabbitMQ
+RABBITMQ_DEFAULT_USER=%%PROJECT_SLUG%%
+RABBITMQ_DEFAULT_PASS=%%RABBITMQ_PASSWORD%%
+RABBITMQ_DEFAULT_VHOST=%%PROJECT_SLUG%%
+
+# Environment
+ENVIRONMENT=development
+EOF
+    print_success "Created: $docker_env_template"
+  fi
 }
 
 # Main function
@@ -271,11 +834,27 @@ main() {
   # Generate environment variables
   generate_env_variables
   
+  # Cleanup old files
+  cleanup_old_files
+  
+  # Update templates
+  update_api_env_template
+  update_docker_env_template
+  
   # Setup environment
   setup_development
   
+  # Update requirements
+  update_requirements
+  
   # Create docker-compose file
   create_docker_compose
+  
+  # Create entrypoint script
+  create_entrypoint_script
+  
+  # Create API Dockerfile
+  create_api_dockerfile
   
   # Create run script
   create_run_script
