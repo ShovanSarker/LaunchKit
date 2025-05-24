@@ -12,6 +12,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 from django.conf import settings
+from django.template.loader import render_to_string
 
 from apps.accounts.serializers import (
     UserSerializer, 
@@ -21,6 +22,7 @@ from apps.accounts.serializers import (
     ResetPasswordSerializer,
     UserProfileSerializer,
 )
+from apps.core.mail import send_email
 
 User = get_user_model()
 
@@ -83,21 +85,43 @@ class ResetPasswordEmailView(APIView):
             try:
                 user = User.objects.get(email=email)
                 
-                # Generate token
+                # Generate token and URL
                 token = default_token_generator.make_token(user)
                 uid = urlsafe_base64_encode(force_bytes(user.pk))
-                
-                # Construct reset URL - in a real app, we'd send an email here
                 reset_url = f"{settings.FRONTEND_URL}/auth/reset-password?uid={uid}&token={token}"
                 
-                # For demo purposes, just return the URL
-                return Response({"detail": "Password reset email sent.", "reset_url": reset_url}, status=status.HTTP_200_OK)
+                # Prepare email context
+                context = {
+                    'user': user,
+                    'reset_url': reset_url,
+                    'project_name': getattr(settings, 'PROJECT_NAME', 'LaunchKit'),
+                }
+                
+                # Render email templates
+                html_message = render_to_string('email/password_reset_email.html', context)
+                text_message = render_to_string('email/password_reset_email.txt', context)
+                
+                # Send email
+                send_email(
+                    subject="Reset Your Password",
+                    message=text_message,
+                    html_message=html_message,
+                    to_emails=[user.email],
+                )
+                
+                return Response(
+                    {"detail": "Password reset email sent."}, 
+                    status=status.HTTP_200_OK
+                )
             
             except User.DoesNotExist:
                 # Don't reveal whether a user account exists
                 pass
                 
-        return Response({"detail": "Password reset email sent if the account exists."}, status=status.HTTP_200_OK)
+        return Response(
+            {"detail": "Password reset email sent if the account exists."}, 
+            status=status.HTTP_200_OK
+        )
 
 
 class ResetPasswordView(APIView):

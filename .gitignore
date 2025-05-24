@@ -2,6 +2,9 @@
 .env
 .env.*
 !.env.example
+api/.env
+app/.env.local
+docker/.env
 
 # Python / Django
 __pycache__/
@@ -47,6 +50,8 @@ coverage/
 
 # Docker
 docker-compose.override.yml
+docker/docker-compose.yml
+api/docker-entrypoint.sh
 
 # IDE / Editors
 .idea/
@@ -71,8 +76,18 @@ logs/
 
 # Databases
 *.sqlite3
-*.db 
+*.db
 
-# Environement specific files
-docker/docker-compose.yml
+# Generated Scripts
 scripts/run_dev.sh
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+celerybeat-schedule.db
+*.pid
+
+# Generated Requirements
+api/requirements/base.txt
+api/requirements/dev.txt
+api/requirements/prod.txt

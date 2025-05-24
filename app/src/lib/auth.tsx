@@ -43,7 +43,7 @@ const AuthContext = createContext<AuthContextType>({
 // Auth provider component
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   // Check if user is authenticated on mount
@@ -52,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const token = localStorage.getItem('accessToken');
         if (!token) {
+          setIsLoading(false);
           return;
         }
 
@@ -62,6 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Clear tokens if auth check fails
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        setUser(null);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -70,25 +74,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Login function
   const login = async (username: string, password: string) => {
-    setIsLoading(true);
     try {
-      await authAPI.login(username, password);
-      const response = await userAPI.getProfile();
-      setUser(response.data);
-      router.push('/dashboard');
+      // First, ensure we're logged out
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      setUser(null);
+
+      // Perform login
+      const authResponse = await authAPI.login(username, password);
+      
+      // Verify tokens were set
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Login failed: No token received');
+      }
+
+      // Fetch user profile
+      const userResponse = await userAPI.getProfile();
+      setUser(userResponse.data);
+      
+      // Only navigate on success
+      router.replace('/');
     } catch (error) {
       console.error('Login failed:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
+      // Ensure we're fully logged out on error
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      setUser(null);
+      throw error; // Re-throw the error to be handled by the login page
     }
   };
 
   // Logout function
   const logout = () => {
-    authAPI.logout();
+    // Clear all auth state
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     setUser(null);
-    router.push('/');
+    
+    // Navigate to login
+    router.replace('/auth/login');
   };
 
   // Register function

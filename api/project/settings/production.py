@@ -4,6 +4,12 @@ Production settings for LaunchKit.
 
 from .base import *
 
+# Frontend URL
+FRONTEND_URL = env("FRONTEND_URL")
+
+# Site name
+PROJECT_NAME = env("PROJECT_NAME", default="LaunchKit")
+
 # Security settings
 DEBUG = False
 SECURE_SSL_REDIRECT = True

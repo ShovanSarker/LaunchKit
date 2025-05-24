@@ -61,4 +61,57 @@ class SoftDeleteModel(models.Model):
         """
         Hard delete the model instance from the database.
         """
-        return super().delete(using=using, keep_parents=keep_parents) 
+        return super().delete(using=using, keep_parents=keep_parents)
+
+
+class Email(models.Model):
+    """
+    Model to store emails sent during development.
+    """
+    from_email = models.EmailField()
+    to_emails = models.TextField()
+    cc_emails = models.TextField(blank=True)
+    bcc_emails = models.TextField(blank=True)
+    subject = models.CharField(max_length=255)
+    body = models.TextField()
+    html_body = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Email'
+        verbose_name_plural = 'Emails'
+    
+    def __str__(self):
+        return f'{self.subject} - To: {self.get_recipients_display()} ({self.created_at:%Y-%m-%d %H:%M})'
+    
+    def get_recipients_display(self, max_length=50):
+        """
+        Get a formatted string of recipients, truncated if too long.
+        """
+        recipients = self.to_emails.split(',')[0].strip()
+        more = len(self.to_emails.split(',')) - 1
+        if more > 0:
+            recipients += f' and {more} more'
+        if len(recipients) > max_length:
+            recipients = recipients[:max_length-3] + '...'
+        return recipients
+    
+    def get_all_recipients(self):
+        """
+        Get a list of all recipients (To, CC, and BCC).
+        """
+        recipients = []
+        if self.to_emails:
+            recipients.extend(email.strip() for email in self.to_emails.split(','))
+        if self.cc_emails:
+            recipients.extend(email.strip() for email in self.cc_emails.split(','))
+        if self.bcc_emails:
+            recipients.extend(email.strip() for email in self.bcc_emails.split(','))
+        return list(filter(None, recipients))
+    
+    def has_html_content(self):
+        """
+        Check if the email has HTML content.
+        """
+        return bool(self.html_body and self.html_body.strip()) 

@@ -26,7 +26,7 @@ def send_password_reset_email(user_id, token, uid):
         context = {
             'user': user,
             'reset_url': reset_url,
-            'site_name': settings.SITE_NAME,
+            'site_name': settings.PROJECT_NAME,
         }
         
         email_html_message = render_to_string('email/password_reset_email.html', context)
@@ -34,7 +34,7 @@ def send_password_reset_email(user_id, token, uid):
         
         # Send email
         send_mail(
-            subject=f"Password Reset for {settings.SITE_NAME}",
+            subject=f"Password Reset for {settings.PROJECT_NAME}",
             message=email_plaintext_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],

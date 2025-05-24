@@ -46,7 +46,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-200px)] items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="flex min-h-[calc(100vh-200px)] items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-900">
       <div className="w-full max-w-md space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
@@ -56,7 +56,7 @@ export default function RegisterPage() {
             Or{' '}
             <Link
               href="/auth/login"
-              className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400"
+              className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
             >
               sign in to your existing account
             </Link>
@@ -83,128 +83,117 @@ export default function RegisterPage() {
         )}
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="space-y-4">
+          <div className="space-y-4 rounded-md shadow-sm">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Username
               </label>
-              <div className="mt-1">
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  value={formData.username}
-                  onChange={handleChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:text-sm"
-                />
-                {errors.username && (
-                  <p className="mt-2 text-sm text-red-600 dark:text-red-400">{errors.username.join(' ')}</p>
-                )}
-              </div>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                value={formData.username}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 sm:text-sm sm:leading-6"
+                disabled={isLoading}
+              />
+              {errors.username && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.username[0]}</p>
+              )}
             </div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Email address
+                Email
               </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:text-sm"
-                />
-                {errors.email && (
-                  <p className="mt-2 text-sm text-red-600 dark:text-red-400">{errors.email.join(' ')}</p>
-                )}
-              </div>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 sm:text-sm sm:leading-6"
+                disabled={isLoading}
+              />
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.email[0]}</p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  First name
-                </label>
-                <div className="mt-1">
-                  <input
-                    id="first_name"
-                    name="first_name"
-                    type="text"
-                    required
-                    value={formData.first_name}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:text-sm"
-                  />
-                  {errors.first_name && (
-                    <p className="mt-2 text-sm text-red-600 dark:text-red-400">{errors.first_name.join(' ')}</p>
-                  )}
-                </div>
-              </div>
+            <div>
+              <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                First Name
+              </label>
+              <input
+                id="first_name"
+                name="first_name"
+                type="text"
+                value={formData.first_name}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 sm:text-sm sm:leading-6"
+                disabled={isLoading}
+              />
+              {errors.first_name && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.first_name[0]}</p>
+              )}
+            </div>
 
-              <div>
-                <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Last name
-                </label>
-                <div className="mt-1">
-                  <input
-                    id="last_name"
-                    name="last_name"
-                    type="text"
-                    required
-                    value={formData.last_name}
-                    onChange={handleChange}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:text-sm"
-                  />
-                  {errors.last_name && (
-                    <p className="mt-2 text-sm text-red-600 dark:text-red-400">{errors.last_name.join(' ')}</p>
-                  )}
-                </div>
-              </div>
+            <div>
+              <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Last Name
+              </label>
+              <input
+                id="last_name"
+                name="last_name"
+                type="text"
+                value={formData.last_name}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 sm:text-sm sm:leading-6"
+                disabled={isLoading}
+              />
+              {errors.last_name && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.last_name[0]}</p>
+              )}
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Password
               </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:text-sm"
-                />
-                {errors.password && (
-                  <p className="mt-2 text-sm text-red-600 dark:text-red-400">{errors.password.join(' ')}</p>
-                )}
-              </div>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={formData.password}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 sm:text-sm sm:leading-6"
+                disabled={isLoading}
+              />
+              {errors.password && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.password[0]}</p>
+              )}
             </div>
 
             <div>
               <label htmlFor="password2" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Confirm password
+                Confirm Password
               </label>
-              <div className="mt-1">
-                <input
-                  id="password2"
-                  name="password2"
-                  type="password"
-                  required
-                  value={formData.password2}
-                  onChange={handleChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:text-sm"
-                />
-                {errors.password2 && (
-                  <p className="mt-2 text-sm text-red-600 dark:text-red-400">{errors.password2.join(' ')}</p>
-                )}
-              </div>
+              <input
+                id="password2"
+                name="password2"
+                type="password"
+                required
+                value={formData.password2}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:placeholder:text-gray-500 sm:text-sm sm:leading-6"
+                disabled={isLoading}
+              />
+              {errors.password2 && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.password2[0]}</p>
+              )}
             </div>
           </div>
 
@@ -212,7 +201,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="group relative flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:bg-blue-400"
+              className="group relative flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:bg-blue-400 dark:disabled:bg-blue-500/50"
             >
               {isLoading ? 'Creating account...' : 'Create account'}
             </button>

@@ -6,6 +6,8 @@ import uuid
 import time
 import logging
 import json
+import traceback
+from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,13 @@ class JSONLoggingMiddleware(MiddlewareMixin):
             'user_id': request.user.id if hasattr(request, 'user') and request.user.is_authenticated else None,
         }
         
+        # In development, also log request body
+        if settings.DEBUG and request.body:
+            try:
+                log_data['body'] = json.loads(request.body)
+            except json.JSONDecodeError:
+                log_data['body'] = request.body.decode('utf-8', errors='replace')
+        
         logger.info('Request started', extra=log_data)
         return None
     
@@ -83,6 +92,17 @@ class JSONLoggingMiddleware(MiddlewareMixin):
             'user_id': request.user.id if hasattr(request, 'user') and request.user.is_authenticated else None,
         }
         
+        # In development, include response content for errors
+        if settings.DEBUG and response.status_code >= 400:
+            try:
+                log_data['response'] = json.loads(response.content)
+            except json.JSONDecodeError:
+                log_data['response'] = response.content.decode('utf-8', errors='replace')
+            
+            # Include traceback for 500 errors
+            if response.status_code >= 500:
+                log_data['traceback'] = traceback.format_exc()
+        
         # Log at different levels based on status code
         if response.status_code >= 500:
             logger.error('Request failed', extra=log_data)
@@ -91,4 +111,26 @@ class JSONLoggingMiddleware(MiddlewareMixin):
         else:
             logger.info('Request completed', extra=log_data)
         
-        return response 
+        return response
+
+
+class ExceptionLoggingMiddleware(MiddlewareMixin):
+    """
+    Middleware that logs unhandled exceptions in detail.
+    """
+    
+    def process_exception(self, request, exception):
+        """
+        Log unhandled exceptions with full traceback in development.
+        """
+        log_data = {
+            'request_id': getattr(request, 'request_id', str(uuid.uuid4())),
+            'method': request.method,
+            'path': request.path,
+            'exception': str(exception),
+            'exception_type': exception.__class__.__name__,
+            'traceback': traceback.format_exc(),
+        }
+        
+        logger.error('Unhandled exception', extra=log_data)
+        return None 

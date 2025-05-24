@@ -66,12 +66,9 @@ api.interceptors.response.use(
         // Retry the original request
         return api(originalRequest);
       } catch (refreshError) {
-        // If refresh fails, clear tokens and redirect to login
+        // If refresh fails, clear tokens but don't redirect
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        if (isBrowser) {
-          window.location.href = '/auth/login';
-        }
         return Promise.reject(refreshError);
       }
     }
@@ -83,13 +80,18 @@ api.interceptors.response.use(
 // Auth API functions
 export const authAPI = {
   login: async (username: string, password: string) => {
-    const response = await api.post('/api/auth/login/', { username, password });
-    if (isBrowser) {
-      const { access, refresh } = response.data;
-      localStorage.setItem('accessToken', access);
-      localStorage.setItem('refreshToken', refresh);
+    try {
+      const response = await api.post('/api/auth/login/', { username, password });
+      if (isBrowser && response.data) {
+        const { access, refresh } = response.data;
+        localStorage.setItem('accessToken', access);
+        localStorage.setItem('refreshToken', refresh);
+      }
+      return response.data;
+    } catch (error) {
+      // Don't transform the error, just pass it through
+      throw error;
     }
-    return response.data;
   },
   
   logout: () => {
@@ -119,7 +121,12 @@ export const authAPI = {
 // User API functions
 export const userAPI = {
   getProfile: async () => {
-    return await api.get('/api/auth/profile/');
+    try {
+      return await api.get('/api/auth/profile/');
+    } catch (error) {
+      // Don't transform the error, just pass it through
+      throw error;
+    }
   },
   
   updateProfile: async (profileData: any) => {

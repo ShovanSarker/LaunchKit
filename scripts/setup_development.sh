@@ -33,7 +33,7 @@ TEMPLATES_DIR="${PROJECT_ROOT}/templates"
 # Generate random string for secrets
 generate_random_string() {
   length=${1:-50}
-  LC_ALL=C tr -dc 'a-zA-Z0-9!@$%^&*_+=' < /dev/urandom | head -c${length}
+  LC_ALL=C tr -dc 'a-zA-Z0-9!@%^&*_+=' < /dev/urandom | head -c${length}
 }
 
 # Check if a file exists and ask before overwriting
@@ -79,8 +79,12 @@ get_project_info() {
   read -p "Enter project slug (lowercase, no spaces) [$suggested_slug]: " PROJECT_SLUG
   PROJECT_SLUG=${PROJECT_SLUG:-$suggested_slug}
   
+  read -p "Enter project description: " PROJECT_DESCRIPTION
+  PROJECT_DESCRIPTION=${PROJECT_DESCRIPTION:-"A full-stack boilerplate for modern web applications"}
+  
   print_message "Project name: ${PROJECT_NAME}"
   print_message "Project slug: ${PROJECT_SLUG}"
+  print_message "Project description: ${PROJECT_DESCRIPTION}"
 }
 
 # Generate environment variables
@@ -116,6 +120,7 @@ apply_template() {
   # Replace variables in the output file
   sed -i.bak "s|%%PROJECT_NAME%%|${PROJECT_NAME}|g" "$output_file"
   sed -i.bak "s|%%PROJECT_SLUG%%|${PROJECT_SLUG}|g" "$output_file"
+  sed -i.bak "s|%%PROJECT_DESCRIPTION%%|${PROJECT_DESCRIPTION}|g" "$output_file"
   sed -i.bak "s|%%SECRET_KEY%%|${SECRET_KEY}|g" "$output_file"
   sed -i.bak "s|%%DB_PASSWORD%%|${DB_PASSWORD}|g" "$output_file"
   sed -i.bak "s|%%RABBITMQ_PASSWORD%%|${RABBITMQ_PASSWORD}|g" "$output_file"
@@ -160,6 +165,10 @@ setup_development() {
 PROJECT_NAME=${PROJECT_NAME}
 PROJECT_SLUG=${PROJECT_SLUG}
 
+# Django Settings
+DJANGO_SETTINGS_MODULE=project.settings.development
+DEBUG=True
+
 # Database
 POSTGRES_DB=${PROJECT_SLUG}
 POSTGRES_USER=${PROJECT_SLUG}
@@ -183,6 +192,10 @@ EOF
 PROJECT_NAME=${PROJECT_NAME}
 PROJECT_SLUG=${PROJECT_SLUG}
 
+# Django Settings
+DJANGO_SETTINGS_MODULE=project.settings.development
+DEBUG=True
+
 # Database
 POSTGRES_DB=${PROJECT_SLUG}
 POSTGRES_USER=${PROJECT_SLUG}
@@ -198,6 +211,10 @@ ENVIRONMENT=development
 EOF
     print_success "Updated: ${docker_dir_env_file}"
   fi
+
+  # Export DJANGO_SETTINGS_MODULE for the current shell session
+  export DJANGO_SETTINGS_MODULE=project.settings.development
+  print_success "Set DJANGO_SETTINGS_MODULE=project.settings.development for current session"
 }
 
 # Update requirements files
@@ -387,6 +404,8 @@ services:
     env_file:
       - ../api/.env
     environment:
+      - DJANGO_SETTINGS_MODULE=project.settings.development
+      - DEBUG=True
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=\${POSTGRES_DB}
       - POSTGRES_USER=\${POSTGRES_USER}
@@ -410,6 +429,8 @@ services:
     env_file:
       - ../api/.env
     environment:
+      - DJANGO_SETTINGS_MODULE=project.settings.development
+      - DEBUG=True
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=\${POSTGRES_DB}
       - POSTGRES_USER=\${POSTGRES_USER}
@@ -431,6 +452,8 @@ services:
     env_file:
       - ../api/.env
     environment:
+      - DJANGO_SETTINGS_MODULE=project.settings.development
+      - DEBUG=True
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=\${POSTGRES_DB}
       - POSTGRES_USER=\${POSTGRES_USER}
@@ -714,6 +737,7 @@ PROJECT_SLUG=%%PROJECT_SLUG%%
 # Django Settings
 DJANGO_ENV=development
 DEBUG=True
+DJANGO_SETTINGS_MODULE=project.settings.development
 DJANGO_SECRET_KEY=%%SECRET_KEY%%
 ALLOWED_HOSTS=localhost,127.0.0.1,api.localhost
 CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
@@ -755,7 +779,7 @@ EOF
     # Create directory if it doesn't exist
     mkdir -p "$(dirname "$api_env_template")"
     
-    # Create a new template
+    # Create a new template with the same content as above
     cat > "$api_env_template" << EOF
 # API Environment - Development
 
@@ -766,6 +790,7 @@ PROJECT_SLUG=%%PROJECT_SLUG%%
 # Django Settings
 DJANGO_ENV=development
 DEBUG=True
+DJANGO_SETTINGS_MODULE=project.settings.development
 DJANGO_SECRET_KEY=%%SECRET_KEY%%
 ALLOWED_HOSTS=localhost,127.0.0.1,api.localhost
 CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
@@ -882,6 +907,7 @@ update_app_env_template() {
 # Project Information
 NEXT_PUBLIC_PROJECT_NAME=%%PROJECT_NAME%%
 NEXT_PUBLIC_PROJECT_SLUG=%%PROJECT_SLUG%%
+NEXT_PUBLIC_PROJECT_DESCRIPTION="A full-stack boilerplate for modern web applications"
 
 # API Settings
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -909,6 +935,7 @@ EOF
 # Project Information
 NEXT_PUBLIC_PROJECT_NAME=%%PROJECT_NAME%%
 NEXT_PUBLIC_PROJECT_SLUG=%%PROJECT_SLUG%%
+NEXT_PUBLIC_PROJECT_DESCRIPTION="A full-stack boilerplate for modern web applications"
 
 # API Settings
 NEXT_PUBLIC_API_URL=http://localhost:8000
