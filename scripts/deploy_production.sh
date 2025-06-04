@@ -23,7 +23,7 @@ print_warning() {
 check_requirements() {
     print_message "Checking requirements..."
     
-    commands=("docker" "docker-compose" "git")
+    commands=("docker" "docker-compose" "git" "certbot")
     for cmd in "${commands[@]}"; do
         if ! command -v $cmd &> /dev/null; then
             print_error "$cmd is required but not installed."
@@ -76,6 +76,51 @@ check_s3_buckets() {
         print_warning "Media bucket '${MEDIA_BUCKET}' does not exist. Please create it."
     else
         print_message "Media bucket '${MEDIA_BUCKET}' exists."
+    fi
+}
+
+# Setup SSL certificates
+setup_ssl() {
+    print_message "Setting up SSL certificates..."
+    
+    # Get domain from environment
+    DOMAIN=${DOMAIN:-"example.com"}
+    
+    # Install Certbot if not installed
+    if ! command -v certbot &> /dev/null; then
+        print_message "Installing Certbot..."
+        apt-get update
+        apt-get install -y certbot python3-certbot-nginx
+    fi
+    
+    # Obtain SSL certificates
+    certbot --nginx -d ${DOMAIN} -d www.${DOMAIN} -d api.${DOMAIN} -d monitor.${DOMAIN} --non-interactive --agree-tos --email ${ADMIN_EMAIL}
+    
+    if [ $? -ne 0 ]; then
+        print_error "SSL certificate setup failed"
+        exit 1
+    fi
+}
+
+# Setup database
+setup_database() {
+    print_message "Setting up database..."
+    
+    # Get database credentials from environment
+    DB_NAME=${DB_NAME:-"launchkit"}
+    DB_USER=${DB_USER:-"launchkit"}
+    DB_PASSWORD=${DB_PASSWORD:-"your-password"}
+    
+    # Create database and user
+    docker-compose -f docker-compose.prod.yml exec -T db psql -U postgres << EOF
+    CREATE DATABASE ${DB_NAME};
+    CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';
+    GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};
+EOF
+    
+    if [ $? -ne 0 ]; then
+        print_error "Database setup failed"
+        exit 1
     fi
 }
 
@@ -146,6 +191,66 @@ deploy_docker() {
     fi
 }
 
+# Verify security
+verify_security() {
+    print_message "Verifying security configuration..."
+    
+    # Check firewall rules
+    print_message "Checking firewall rules..."
+    ufw status
+    
+    # Verify Nginx configuration
+    print_message "Verifying Nginx configuration..."
+    nginx -t
+    
+    # Test SSL configuration
+    print_message "Testing SSL configuration..."
+    curl -I https://${DOMAIN}
+}
+
+# Verify backups
+verify_backups() {
+    print_message "Verifying backup configuration..."
+    
+    # Check backup service status
+    print_message "Checking backup service status..."
+    systemctl status backup.service
+    
+    # List available backups
+    print_message "Listing available backups..."
+    ls -l /backup/
+}
+
+# Setup monitoring
+setup_monitoring() {
+    print_message "Setting up monitoring..."
+    
+    # Access Grafana and set up dashboards
+    print_message "Setting up Grafana dashboards..."
+    
+    # Wait for Grafana to be ready
+    sleep 10
+    
+    # Import dashboards
+    for dashboard in monitoring/dashboards/*.json; do
+        print_message "Importing dashboard: ${dashboard}"
+        curl -X POST \
+            -H "Content-Type: application/json" \
+            -d @${dashboard} \
+            http://admin:admin@localhost:3000/api/dashboards/db
+    done
+    
+    # Set up alerts
+    print_message "Setting up monitoring alerts..."
+    for alert in monitoring/alerts/*.json; do
+        print_message "Importing alert: ${alert}"
+        curl -X POST \
+            -H "Content-Type: application/json" \
+            -d @${alert} \
+            http://admin:admin@localhost:3000/api/alerts
+    done
+}
+
 # Health check
 health_check() {
     print_message "Performing health check..."
@@ -168,6 +273,14 @@ health_check() {
         print_error "Backend health check failed"
         exit 1
     fi
+    
+    # Check database
+    if docker-compose -f docker-compose.prod.yml exec -T db pg_isready -U ${DB_USER}; then
+        print_message "Database is up and running"
+    else
+        print_error "Database health check failed"
+        exit 1
+    fi
 }
 
 # Main deployment process
@@ -183,6 +296,12 @@ main() {
     # Check S3 buckets
     check_s3_buckets
     
+    # Setup SSL certificates
+    setup_ssl
+    
+    # Setup database
+    setup_database
+    
     # Pull latest changes
     pull_latest_changes
     
@@ -195,10 +314,26 @@ main() {
     # Deploy with Docker
     deploy_docker
     
+    # Verify security
+    verify_security
+    
+    # Verify backups
+    verify_backups
+    
+    # Setup monitoring
+    setup_monitoring
+    
     # Health check
     health_check
     
     print_message "Deployment completed successfully!"
+    print_message "Please check the following:"
+    print_message "1. SSL certificates are properly configured"
+    print_message "2. Database is accessible and migrations are applied"
+    print_message "3. Static files are collected and served"
+    print_message "4. Monitoring dashboards are set up"
+    print_message "5. Backup system is working"
+    print_message "6. Security measures are in place"
 }
 
 # Run main function

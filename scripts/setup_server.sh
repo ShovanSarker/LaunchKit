@@ -302,7 +302,15 @@ EOL
     # Install Node Exporter for system metrics
     apt-get install -y prometheus-node-exporter
     
+    # Stop and remove existing cAdvisor container if it exists
+    if docker ps -a | grep -q cadvisor; then
+        print_message "Removing existing cAdvisor container..."
+        docker stop cadvisor
+        docker rm cadvisor
+    fi
+    
     # Install cAdvisor for container metrics
+    print_message "Installing cAdvisor..."
     docker run -d \
         --name=cadvisor \
         --restart=always \
@@ -319,18 +327,26 @@ EOL
     systemctl start prometheus
     
     # Install and configure Grafana
-    apt-get install -y apt-transport-https software-properties-common
-    wget -q -O - https://packages.grafana.com/gpg.key | apt-key add -
-    echo "deb https://packages.grafana.com/oss/deb stable main" | tee -a /etc/apt/sources.list.d/grafana.list
+    print_message "Installing Grafana..."
+    
+    # Add Grafana GPG key
+    wget -q -O - https://packages.grafana.com/gpg.key | gpg --dearmor | tee /usr/share/keyrings/grafana.gpg > /dev/null
+    
+    # Add Grafana repository
+    echo "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://packages.grafana.com/oss/deb stable main" | tee /etc/apt/sources.list.d/grafana.list
+    
+    # Update package lists
     apt-get update
+    
+    # Install Grafana
     apt-get install -y grafana
     
     # Configure Grafana
-    cat > /etc/grafana/grafana.ini << 'EOL'
+    cat > /etc/grafana/grafana.ini << EOL
 [server]
 http_port = 3000
-domain = monitor.example.com  # Will be replaced with actual domain
-root_url = https://monitor.example.com/  # Will be replaced with actual domain
+domain = monitor.${BASE_DOMAIN}
+root_url = https://monitor.${BASE_DOMAIN}/
 
 [security]
 admin_user = admin
@@ -346,6 +362,11 @@ EOL
     # Start Grafana
     systemctl enable grafana-server
     systemctl start grafana-server
+    
+    print_message "Monitoring setup completed"
+    print_message "Prometheus is available at: http://localhost:9090"
+    print_message "Grafana is available at: http://localhost:3000"
+    print_message "cAdvisor metrics are available at: http://localhost:8080"
 }
 
 # Function to setup object storage
@@ -676,6 +697,133 @@ EOL
     print_message "The system will check for updates every 10 minutes"
 }
 
+# Function to setup backup service
+setup_backup_service() {
+    print_message "Setting up backup service..."
+    
+    # Create backup directory
+    mkdir -p /backup
+    
+    # Create backup script
+    cat > /usr/local/bin/backup.sh << 'EOL'
+#!/bin/bash
+
+# Backup timestamp
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_DIR="/backup"
+
+# Database backup
+docker-compose -f /root/LaunchKit/docker-compose.prod.yml exec -T db pg_dump -U launchkit > ${BACKUP_DIR}/db_${TIMESTAMP}.sql
+
+# Compress backup
+gzip ${BACKUP_DIR}/db_${TIMESTAMP}.sql
+
+# Keep only last 7 days of backups
+find ${BACKUP_DIR} -name "db_*.sql.gz" -mtime +7 -delete
+EOL
+    
+    # Make backup script executable
+    chmod +x /usr/local/bin/backup.sh
+    
+    # Create systemd service
+    cat > /etc/systemd/system/backup.service << 'EOL'
+[Unit]
+Description=LaunchKit Backup Service
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/backup.sh
+
+[Install]
+WantedBy=multi-user.target
+EOL
+    
+    # Create systemd timer
+    cat > /etc/systemd/system/backup.timer << 'EOL'
+[Unit]
+Description=LaunchKit Backup Timer
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Unit=backup.service
+
+[Install]
+WantedBy=multi-user.target
+EOL
+    
+    # Enable and start the timer
+    systemctl daemon-reload
+    systemctl enable backup.timer
+    systemctl start backup.timer
+    
+    print_message "Backup service setup completed"
+    print_message "Backups will run daily at 2:00 AM"
+}
+
+# Function to setup additional security
+setup_security() {
+    print_message "Setting up additional security measures..."
+    
+    # Install fail2ban
+    apt-get install -y fail2ban
+    
+    # Configure fail2ban
+    cat > /etc/fail2ban/jail.local << 'EOL'
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 3
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 3600
+
+[nginx-http-auth]
+enabled = true
+filter = nginx-http-auth
+port = http,https
+logpath = /var/log/nginx/error.log
+maxretry = 3
+bantime = 3600
+EOL
+    
+    # Start fail2ban
+    systemctl enable fail2ban
+    systemctl start fail2ban
+    
+    # Set up automatic security updates
+    apt-get install -y unattended-upgrades
+    
+    cat > /etc/apt/apt.conf.d/20auto-upgrades << 'EOL'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+EOL
+    
+    # Configure automatic updates
+    cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'EOL'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESM:${distro_codename}";
+};
+Unattended-Upgrade::Package-Blacklist {
+};
+Unattended-Upgrade::DevRelease "auto";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "02:00";
+EOL
+    
+    print_message "Additional security measures setup completed"
+}
+
 # Main function
 main() {
     print_message "Starting server setup..."
@@ -698,6 +846,12 @@ main() {
     # Setup monitoring
     setup_monitoring
     
+    # Setup backup service
+    setup_backup_service
+    
+    # Setup additional security
+    setup_security
+    
     # Create environment files
     create_env_files
     
@@ -707,6 +861,9 @@ main() {
     print_message "Server setup completed successfully!"
     print_message "Please update the environment files with your actual values."
     print_message "You can find the templates in templates/env/production/"
+    print_message "Backup service is configured to run daily at 2:00 AM"
+    print_message "Security updates are configured to run automatically"
+    print_message "Fail2ban is configured to protect against brute force attacks"
 }
 
 # Run main function
