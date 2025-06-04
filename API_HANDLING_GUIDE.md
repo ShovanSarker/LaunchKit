@@ -7,6 +7,7 @@
 4. [Security Best Practices](#4-security-best-practices)
 5. [Making API Calls](#5-making-api-calls)
 6. [Error Handling](#6-error-handling)
+7. [File Storage](#7-file-storage)
 
 ## 1. Backend (Django) Configuration
 
@@ -324,6 +325,61 @@ class UserProfileView(generics.RetrieveAPIView):
        status_code = 400
        default_detail = 'Custom error message'
    ```
+
+## 7. File Storage
+
+### Development Storage
+In development, files are stored locally:
+```python
+# api/project/settings/development.py
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "mediafiles"
+```
+
+### Production Storage
+In production, files are stored in AWS S3. You need to create two buckets:
+
+1. **Static Files Bucket**:
+   - Name: `your-project-name-static`
+   - Purpose: Stores static files (CSS, JS, images)
+   - Configuration:
+   ```python
+   # api/project/settings/production.py
+   STATICFILES_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+   AWS_STORAGE_BUCKET_NAME = "your-project-name-static"
+   ```
+
+2. **Media Files Bucket**:
+   - Name: `your-project-name-media`
+   - Purpose: Stores user-uploaded files
+   - Configuration:
+   ```python
+   # api/project/settings/production.py
+   DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+   AWS_STORAGE_BUCKET_NAME = "your-project-name-media"
+   ```
+
+### Required Environment Variables
+```bash
+# AWS Configuration
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_STORAGE_BUCKET_NAME=your-project-name-media  # For media files
+AWS_S3_REGION_NAME=your-region  # e.g., us-east-1
+AWS_S3_CUSTOM_DOMAIN=your-custom-domain  # Optional
+```
+
+### Bucket Setup Steps
+1. Create two S3 buckets with the naming convention above
+2. Configure bucket permissions:
+   - Block all public access
+   - Enable versioning (recommended)
+   - Set up CORS if needed
+3. Create an IAM user with S3 access
+4. Add the AWS credentials to your environment variables
+5. Test file uploads in development and production
 
 ## Best Practices
 

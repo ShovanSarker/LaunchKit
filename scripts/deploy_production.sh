@@ -44,6 +44,41 @@ load_env() {
     source .env
 }
 
+# Check AWS S3 buckets
+check_s3_buckets() {
+    print_message "Checking AWS S3 buckets..."
+    
+    # Get project name from .env or use default
+    PROJECT_NAME=${PROJECT_NAME:-"launchkit"}
+    
+    # Define bucket names
+    STATIC_BUCKET="${PROJECT_NAME}-static"
+    MEDIA_BUCKET="${PROJECT_NAME}-media"
+    
+    print_message "Required S3 buckets:"
+    print_message "1. Static files bucket: ${STATIC_BUCKET}"
+    print_message "2. Media files bucket: ${MEDIA_BUCKET}"
+    
+    # Check if AWS CLI is installed
+    if ! command -v aws &> /dev/null; then
+        print_warning "AWS CLI not installed. Cannot verify bucket existence."
+        return
+    fi
+    
+    # Check if buckets exist
+    if aws s3 ls "s3://${STATIC_BUCKET}" 2>&1 | grep -q 'NoSuchBucket'; then
+        print_warning "Static bucket '${STATIC_BUCKET}' does not exist. Please create it."
+    else
+        print_message "Static bucket '${STATIC_BUCKET}' exists."
+    fi
+    
+    if aws s3 ls "s3://${MEDIA_BUCKET}" 2>&1 | grep -q 'NoSuchBucket'; then
+        print_warning "Media bucket '${MEDIA_BUCKET}' does not exist. Please create it."
+    else
+        print_message "Media bucket '${MEDIA_BUCKET}' exists."
+    fi
+}
+
 # Pull latest changes
 pull_latest_changes() {
     print_message "Pulling latest changes..."
@@ -144,6 +179,9 @@ main() {
     
     # Load environment variables
     load_env
+    
+    # Check S3 buckets
+    check_s3_buckets
     
     # Pull latest changes
     pull_latest_changes

@@ -8,6 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- None
+
+### Changed
+- None
+
+### Deprecated
+- None
+
+### Removed
+- None
+
+### Fixed
+- None
+
+### Security
+- None
+
+## [0.2.0] - 2025-06-05
+
+### Added
+- API Handling Guide with real codebase examples and S3 bucket setup instructions
+- S3 bucket name check and display in production deployment script
+
+### Changed
+- Documentation: README, DEVELOPMENT.md, and API guide updated for accurate setup and usage instructions
+
+### Deprecated
+- None
+
+### Removed
+- None
+
+### Fixed
+- None
+
+### Security
+- None
+
+## [0.1.0] - 2025-06-04
+
+### Added
 - Initial project setup with Django and Next.js
 - Docker configuration for development and production
 - PostgreSQL database integration
@@ -36,11 +77,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - None
-
-## [0.1.0] - 2025-06-04
-
-### Added
-- Initial release
-- Basic project structure
-- Core functionality implementation
-- Documentation 
