@@ -5,6 +5,8 @@
 api/.env
 app/.env.local
 docker/.env
+templates/env/production/*.env.template
+templates/env/development/*.env.template
 
 # Python / Django
 __pycache__/
