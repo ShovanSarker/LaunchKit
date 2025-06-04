@@ -7,7 +7,7 @@ This guide provides detailed instructions for deploying LaunchKit to production.
 - A production server (Ubuntu 20.04 LTS or later recommended)
 - Domain name with DNS access
 - SSL certificate (Let's Encrypt recommended)
-- AWS S3 or DigitalOcean Spaces account (for file storage)
+- Storage provider account (AWS S3 or DigitalOcean Spaces)
 
 ## Deployment Steps
 
@@ -38,13 +38,25 @@ monitor -> your-server-ip
 
 ### 3. Environment Setup
 
-The setup script will prompt for:
+Run the environment setup script:
+
+```bash
+./scripts/setup_env.sh
+```
+
+The script will prompt for:
 - Base domain (e.g., example.com)
+- Email for Let's Encrypt
+- Database password
+- RabbitMQ password
+- Email settings
 - Storage provider (AWS S3 or DO Spaces)
 - Storage credentials
-- Monitoring credentials
 
-Environment files will be created in `templates/env/production/`.
+The script will:
+1. Generate secure random strings for secrets
+2. Create environment files with proper formatting
+3. Configure storage settings based on your provider choice
 
 ### 4. Storage Setup
 
@@ -139,7 +151,7 @@ sudo apt-get update
 sudo apt-get install certbot python3-certbot-nginx
 
 # Obtain SSL certificates
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d api.your-domain.com -d monitor.your-domain.com
+sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d api.your-domain.com -d monitor.your-domain.com --email your-email@example.com --agree-tos --non-interactive
 ```
 
 ### 6. Database Setup
