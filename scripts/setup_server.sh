@@ -59,7 +59,8 @@ install_system_dependencies() {
         npm \
         python3 \
         python3-pip \
-        python3-venv
+        python3-venv \
+        apache2-utils  # Added for htpasswd
 }
 
 # Function to install Docker
@@ -112,8 +113,17 @@ setup_nginx() {
     # Get domain information
     BASE_DOMAIN=$(get_input "Enter your base domain (e.g., example.com)" "example.com")
     
+    # Create directory for environment templates
+    mkdir -p templates/env/production
+    
     # Remove default configuration
     rm -f /etc/nginx/sites-enabled/default
+    
+    # Create rate limiting configuration
+    cat > /etc/nginx/conf.d/rate-limit.conf << EOL
+# Rate limiting zones
+limit_req_zone \$binary_remote_addr zone=api_limit:10m rate=10r/s;
+EOL
     
     # Create main application Nginx configuration
     cat > /etc/nginx/sites-available/launchkit << EOL
@@ -164,7 +174,6 @@ server {
     add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
 
     # Rate limiting
-    limit_req_zone \$binary_remote_addr zone=api_limit:10m rate=10r/s;
     limit_req zone=api_limit burst=20 nodelay;
 
     # API endpoints
@@ -236,6 +245,11 @@ EOL
     MONITOR_USER=$(get_input "Enter monitoring username" "admin")
     MONITOR_PASS=$(get_input "Enter monitoring password" "monitor123")
     htpasswd -bc /etc/nginx/.htpasswd "$MONITOR_USER" "$MONITOR_PASS"
+    
+    # Create environment templates if they don't exist
+    if [ ! -f templates/env/production/api.env.template ]; then
+        create_env_files
+    fi
     
     # Update environment templates with the domain
     sed -i "s/example.com/${BASE_DOMAIN}/g" templates/env/production/api.env.template
@@ -599,23 +613,26 @@ EOL
 setup_auto_deployment() {
     print_message "Setting up auto-deployment..."
     
+    # Get project directory
+    PROJECT_DIR=$(pwd)
+    
     # Create auto-deployment script
-    cat > /usr/local/bin/check_updates.sh << 'EOL'
+    cat > /usr/local/bin/check_updates.sh << EOL
 #!/bin/bash
 
 # Change to project directory
-cd /path/to/launchkit
+cd ${PROJECT_DIR}
 
 # Check for updates
 git fetch origin
 
 # Get current branch
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+CURRENT_BRANCH=\$(git rev-parse --abbrev-ref HEAD)
 
 # Check if there are updates
-if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/$CURRENT_BRANCH)" ]; then
+if [ "\$(git rev-parse HEAD)" != "\$(git rev-parse origin/\$CURRENT_BRANCH)" ]; then
     # Pull changes and deploy
-    git pull origin $CURRENT_BRANCH
+    git pull origin \$CURRENT_BRANCH
     ./scripts/deploy_production.sh
 fi
 EOL
@@ -624,16 +641,21 @@ EOL
     chmod +x /usr/local/bin/check_updates.sh
     
     # Create systemd service
-    cat > /etc/systemd/system/launchkit-updater.service << 'EOL'
+    cat > /etc/systemd/system/launchkit-updater.service << EOL
 [Unit]
 Description=LaunchKit Auto Updater
 After=network.target
 
 [Service]
-Type=simple
+Type=oneshot
 User=root
 ExecStart=/usr/local/bin/check_updates.sh
-Restart=always
+EOL
+    
+    # Create systemd timer
+    cat > /etc/systemd/system/launchkit-updater.timer << EOL
+[Unit]
+Description=LaunchKit Auto Update Timer
 
 [Timer]
 OnCalendar=*:0/10
@@ -643,9 +665,15 @@ Unit=launchkit-updater.service
 WantedBy=multi-user.target
 EOL
     
-    # Enable and start the service
+    # Reload systemd
+    systemctl daemon-reload
+    
+    # Enable and start the timer
     systemctl enable launchkit-updater.timer
     systemctl start launchkit-updater.timer
+    
+    print_message "Auto-deployment setup completed"
+    print_message "The system will check for updates every 10 minutes"
 }
 
 # Main function
