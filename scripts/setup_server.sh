@@ -789,15 +789,39 @@ EOL
 setup_database() {
     print_message "Setting up database..."
     
+    # Check if Docker is running and start it if needed
+    if ! systemctl is-active --quiet docker; then
+        print_message "Docker is not running. Starting Docker..."
+        systemctl start docker
+        sleep 5  # Wait for Docker to start
+    fi
+    
     # Create docker directory and docker-compose file
     create_docker_compose
     
     # Create required directories
     mkdir -p nginx/conf.d nginx/ssl
     
-    # Start database container
+    # Load environment variables
+    if [ -f .env ]; then
+        set -a  # automatically export all variables
+        source .env
+        set +a
+    else
+        print_error "Environment file .env not found"
+        exit 1
+    fi
+    
+    # Start database container with environment variables
     print_message "Starting database container..."
-    cd docker && docker compose -f docker-compose.prod.yml up -d postgres
+    cd docker && \
+    POSTGRES_DB=${POSTGRES_DB} \
+    POSTGRES_USER=${POSTGRES_USER} \
+    POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+    RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER} \
+    RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS} \
+    RABBITMQ_DEFAULT_VHOST=${RABBITMQ_DEFAULT_VHOST} \
+    docker compose -f docker-compose.prod.yml up -d postgres
     
     # Wait for database to be ready
     print_message "Waiting for database to be ready..."
