@@ -812,6 +812,12 @@ setup_database() {
         exit 1
     fi
     
+    # Print environment variables for debugging (without sensitive data)
+    print_message "Checking environment variables..."
+    print_message "POSTGRES_DB: ${POSTGRES_DB}"
+    print_message "POSTGRES_USER: ${POSTGRES_USER}"
+    print_message "POSTGRES_HOST: ${POSTGRES_HOST}"
+    
     # Start database container with environment variables
     print_message "Starting database container..."
     cd docker && \
@@ -827,16 +833,28 @@ setup_database() {
     print_message "Waiting for database to be ready..."
     sleep 10
     
-    # Verify database connection
-    print_message "Verifying database connection..."
+    # Check container status
+    print_message "Checking container status..."
+    docker ps | grep ${PROJECT_SLUG}_postgres
+    
+    # Check container logs
+    print_message "Checking container logs..."
+    docker logs ${PROJECT_SLUG}_postgres
+    
+    # Try to connect to database with explicit password
+    print_message "Attempting database connection..."
     if docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
         print_message "Database connection successful"
     else
         print_error "Database connection failed"
+        print_message "Attempting to connect with explicit password..."
+        PGPASSWORD=${POSTGRES_PASSWORD} docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l"
+        
         print_message "Please check if:"
         print_message "1. Docker is running"
         print_message "2. Environment variables are set correctly"
         print_message "3. Port 5432 is available"
+        print_message "4. Database container is healthy"
         exit 1
     fi
     
