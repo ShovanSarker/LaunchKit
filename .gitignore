@@ -82,6 +82,7 @@ logs/
 
 # Generated Scripts
 scripts/run_dev.sh
+scripts/setup_server.sh
 
 # Celery
 celerybeat-schedule
