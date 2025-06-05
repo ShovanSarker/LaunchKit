@@ -564,7 +564,7 @@ services:
     volumes:
       - ../api:/app
     env_file:
-      - ../api/.env
+      - ../.env
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
@@ -601,7 +601,7 @@ services:
     volumes:
       - ../api:/app
     env_file:
-      - ../api/.env
+      - ../.env
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
@@ -625,7 +625,7 @@ services:
     volumes:
       - ../api:/app
     env_file:
-      - ../api/.env
+      - ../.env
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
