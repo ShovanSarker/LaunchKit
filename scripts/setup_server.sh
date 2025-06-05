@@ -66,6 +66,12 @@ install_system_dependencies() {
         python3-pip \
         python3-venv \
         apache2-utils  # Added for htpasswd
+    
+    # Install certbot only if SSL is enabled
+    if [ "$SSL_ENABLED" = true ]; then
+        print_message "Installing certbot for SSL..."
+        apt-get install -y certbot python3-certbot-nginx
+    fi
 }
 
 # Function to install Docker
@@ -222,7 +228,7 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # CORS headers
-    add_header 'Access-Control-Allow-Origin' 'https://${DOMAIN}' always;
+    add_header 'Access-Control-Allow-Origin' 'http://${DOMAIN}' always;
     add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
     add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
     add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
@@ -241,7 +247,7 @@ server {
 
         # Handle OPTIONS method for CORS
         if (\$request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' 'https://${DOMAIN}' always;
+            add_header 'Access-Control-Allow-Origin' 'http://${DOMAIN}' always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
             add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
             add_header 'Access-Control-Max-Age' 1728000;
@@ -298,9 +304,20 @@ EOL
     htpasswd -bc nginx/.htpasswd "$MONITOR_USER" "$MONITOR_PASS"
     
     print_message "Nginx configuration created successfully"
-    print_message "Frontend will be available at: https://${DOMAIN}"
-    print_message "API will be available at: https://api.${DOMAIN}"
-    print_message "Monitoring will be available at: https://monitor.${DOMAIN}"
+    print_message "Frontend will be available at: http://${DOMAIN}"
+    print_message "API will be available at: http://api.${DOMAIN}"
+    print_message "Monitoring will be available at: http://monitor.${DOMAIN}"
+    
+    # Configure SSL if enabled
+    if [ "$SSL_ENABLED" = true ]; then
+        print_message "Configuring SSL with Let's Encrypt..."
+        certbot --nginx -d ${DOMAIN} -d www.${DOMAIN} -d api.${DOMAIN} -d monitor.${DOMAIN} --non-interactive --agree-tos --email ${EMAIL}
+        
+        # Update URLs to use HTTPS
+        print_message "Frontend will be available at: https://${DOMAIN}"
+        print_message "API will be available at: https://api.${DOMAIN}"
+        print_message "Monitoring will be available at: https://monitor.${DOMAIN}"
+    fi
 }
 
 # Function to setup monitoring
