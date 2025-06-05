@@ -170,17 +170,17 @@ EOL
 setup_nginx() {
     print_message "Setting up Nginx..."
     
-    # Remove default configuration
-    rm -f /etc/nginx/sites-enabled/default
+    # Create required directories
+    mkdir -p nginx/conf.d nginx/ssl
     
     # Create rate limiting configuration
-    cat > /etc/nginx/conf.d/rate-limit.conf << EOL
+    cat > nginx/conf.d/rate-limit.conf << EOL
 # Rate limiting zones
 limit_req_zone \$binary_remote_addr zone=api_limit:10m rate=10r/s;
 EOL
     
     # Create main application Nginx configuration
-    cat > /etc/nginx/sites-available/launchkit << EOL
+    cat > nginx/conf.d/default.conf << EOL
 # Main frontend server
 server {
     listen 80;
@@ -196,7 +196,7 @@ server {
 
     # Frontend
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://frontend:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -232,7 +232,7 @@ server {
 
     # API endpoints
     location / {
-        proxy_pass http://localhost:8000;
+        proxy_pass http://api:8000;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -271,7 +271,7 @@ server {
 
     # Prometheus
     location /prometheus {
-        proxy_pass http://localhost:9090;
+        proxy_pass http://prometheus:9090;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -281,7 +281,7 @@ server {
 
     # Grafana
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://grafana:3000;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -291,22 +291,13 @@ server {
 }
 EOL
     
-    # Enable the site
-    ln -s /etc/nginx/sites-available/launchkit /etc/nginx/sites-enabled/
-    
     # Create basic auth for monitoring
     print_message "Creating monitoring access credentials..."
     MONITOR_USER=$(get_input "Enter monitoring username" "admin")
     MONITOR_PASS=$(get_input "Enter monitoring password" "monitor123")
-    htpasswd -bc /etc/nginx/.htpasswd "$MONITOR_USER" "$MONITOR_PASS"
+    htpasswd -bc nginx/.htpasswd "$MONITOR_USER" "$MONITOR_PASS"
     
-    # Test Nginx configuration
-    nginx -t
-    
-    # Reload Nginx
-    systemctl reload nginx
-    
-    print_message "Nginx configured for domain: ${DOMAIN}"
+    print_message "Nginx configuration created successfully"
     print_message "Frontend will be available at: https://${DOMAIN}"
     print_message "API will be available at: https://api.${DOMAIN}"
     print_message "Monitoring will be available at: https://monitor.${DOMAIN}"
@@ -316,8 +307,11 @@ EOL
 setup_monitoring() {
     print_message "Setting up monitoring..."
     
+    # Create Prometheus directory
+    mkdir -p prometheus
+    
     # Create Prometheus configuration
-    cat > /etc/prometheus/prometheus.yml << 'EOL'
+    cat > prometheus/prometheus.yml << EOL
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -326,92 +320,28 @@ scrape_configs:
   - job_name: 'launchkit'
     static_configs:
       - targets: 
-        - 'localhost:8000'  # Django API
-        - 'localhost:3000'  # Next.js Frontend
-        - 'localhost:5432'  # PostgreSQL
-        - 'localhost:6379'  # Redis
-        - 'localhost:5672'  # RabbitMQ
-        - 'localhost:15672' # RabbitMQ Management
+        - 'api:8000'  # Django API
+        - 'frontend:3000'  # Next.js Frontend
+        - 'postgres:5432'  # PostgreSQL
+        - 'redis:6379'  # Redis
+        - 'rabbitmq:5672'  # RabbitMQ
+        - 'rabbitmq:15672' # RabbitMQ Management
     metrics_path: '/metrics'
     scheme: 'http'
 
   - job_name: 'node_exporter'
     static_configs:
-      - targets: ['localhost:9100']
+      - targets: ['node-exporter:9100']
 
   - job_name: 'cadvisor'
     static_configs:
-      - targets: ['localhost:8080']
+      - targets: ['cadvisor:8080']
 EOL
-    
-    # Install Node Exporter for system metrics
-    apt-get install -y prometheus-node-exporter
-    
-    # Stop and remove existing cAdvisor container if it exists
-    if docker ps -a | grep -q cadvisor; then
-        print_message "Removing existing cAdvisor container..."
-        docker stop cadvisor
-        docker rm cadvisor
-    fi
-    
-    # Install cAdvisor for container metrics
-    print_message "Installing cAdvisor..."
-    docker run -d \
-        --name=cadvisor \
-        --restart=always \
-        -p 8080:8080 \
-        -v /:/rootfs:ro \
-        -v /var/run:/var/run:ro \
-        -v /sys:/sys:ro \
-        -v /var/lib/docker/:/var/lib/docker:ro \
-        -v /dev/disk/:/dev/disk:ro \
-        gcr.io/cadvisor/cadvisor:latest
-    
-    # Start Prometheus
-    systemctl enable prometheus
-    systemctl start prometheus
-    
-    # Install and configure Grafana
-    print_message "Installing Grafana..."
-    
-    # Add Grafana GPG key
-    wget -q -O - https://packages.grafana.com/gpg.key | gpg --dearmor | tee /usr/share/keyrings/grafana.gpg > /dev/null
-    
-    # Add Grafana repository
-    echo "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://packages.grafana.com/oss/deb stable main" | tee /etc/apt/sources.list.d/grafana.list
-    
-    # Update package lists
-    apt-get update
-    
-    # Install Grafana
-    apt-get install -y grafana
-    
-    # Configure Grafana
-    cat > /etc/grafana/grafana.ini << EOL
-[server]
-http_port = 3000
-domain = monitor.${DOMAIN}
-root_url = https://monitor.${DOMAIN}/
-
-[security]
-admin_user = admin
-admin_password = admin  # Should be changed after first login
-
-[auth.anonymous]
-enabled = false
-
-[auth.basic]
-enabled = true
-EOL
-    
-    # Start Grafana
-    systemctl enable grafana-server
-    systemctl start grafana-server
     
     print_message "Monitoring setup completed"
-    print_message "Prometheus is available at: http://localhost:9090"
-    print_message "Grafana is available at: http://localhost:3000"
-    print_message "cAdvisor metrics are available at: http://localhost:8080"
+    print_message "Prometheus will be available at: http://localhost:9090"
+    print_message "Grafana will be available at: http://localhost:3000"
+    print_message "cAdvisor metrics will be available at: http://localhost:8080"
 }
 
 # Function to setup auto-deployment
@@ -648,6 +578,20 @@ services:
       - rabbitmq
     restart: unless-stopped
 
+  # Frontend service
+  frontend:
+    build:
+      context: ../app
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_SLUG}_frontend
+    volumes:
+      - ../app:/app
+    env_file:
+      - ../app/.env
+    depends_on:
+      - api
+    restart: unless-stopped
+
   # Celery Worker
   worker:
     build:
@@ -762,11 +706,76 @@ services:
       - "443:443"
     depends_on:
       - api
+      - frontend
+    restart: unless-stopped
+
+  # Prometheus for monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ${PROJECT_SLUG}_prometheus
+    volumes:
+      - ../prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ${PROJECT_SLUG}_grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # cAdvisor for container metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: ${PROJECT_SLUG}_cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  # Node Exporter for system metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: ${PROJECT_SLUG}_node_exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
     restart: unless-stopped
 
 volumes:
   pgdata:
   redisdata:
+  prometheus_data:
+  grafana_data:
 
 networks:
   default:
@@ -796,7 +805,7 @@ setup_database() {
     
     # Verify database connection
     print_message "Verifying database connection..."
-    if docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${DB_USER} -d ${DB_NAME} -c "\l" > /dev/null 2>&1; then
+    if docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
         print_message "Database connection successful"
     else
         print_error "Database connection failed"
@@ -825,12 +834,22 @@ main() {
     EMAIL=$(get_input "Enter your email for Let's Encrypt" "admin@example.com")
     PROJECT_SLUG=$(get_input "Enter project slug (e.g., launchkit)" "launchkit")
     
+    # Ask about SSL configuration
+    CONFIGURE_SSL=$(get_input "Do you want to configure SSL with Let's Encrypt? (yes/no)" "yes")
+    if [ "$CONFIGURE_SSL" = "yes" ]; then
+        print_message "SSL will be configured with Let's Encrypt"
+        SSL_ENABLED=true
+    else
+        print_message "SSL configuration will be skipped"
+        SSL_ENABLED=false
+    fi
+    
     # Generate secrets
     DJANGO_SECRET_KEY=$(generate_random_string)
     NEXTAUTH_SECRET=$(generate_random_string)
     
     # Get database credentials
-    DB_PASSWORD=$(get_input "Enter database password" "$(generate_random_string)")
+    POSTGRES_PASSWORD=$(get_input "Enter database password" "$(generate_random_string)")
     RABBITMQ_PASSWORD=$(get_input "Enter RabbitMQ password" "$(generate_random_string)")
     
     # Get SendGrid settings
@@ -852,18 +871,19 @@ DOMAIN=${DOMAIN}
 EMAIL=${EMAIL}
 
 # Database settings
-DB_NAME=${PROJECT_SLUG}
-DB_USER=${PROJECT_SLUG}
-DB_PASSWORD=${DB_PASSWORD}
-DB_HOST=localhost
-DB_PORT=5432
+POSTGRES_DB=${PROJECT_SLUG}
+POSTGRES_USER=${PROJECT_SLUG}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
 
 # Redis settings
-REDIS_URL=redis://localhost:6379/0
+REDIS_URL=redis://redis:6379/0
 
 # RabbitMQ settings
 RABBITMQ_DEFAULT_USER=${PROJECT_SLUG}
 RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+RABBITMQ_DEFAULT_VHOST=/
 
 # SendGrid Email settings
 EMAIL_BACKEND=sendgrid_backend.SendgridBackend
