@@ -824,13 +824,7 @@ setup_database() {
     # Start database container with environment variables
     print_message "Starting database container..."
     cd "${CURRENT_DIR}/docker" && \
-    POSTGRES_DB=${POSTGRES_DB} \
-    POSTGRES_USER=${POSTGRES_USER} \
-    POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
-    RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER} \
-    RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS} \
-    RABBITMQ_DEFAULT_VHOST=${RABBITMQ_DEFAULT_VHOST} \
-    docker compose -f docker-compose.prod.yml --env-file "${CURRENT_DIR}/.env" up -d postgres
+    docker compose -f docker-compose.prod.yml up -d postgres
     
     # Wait for database to be ready
     print_message "Waiting for database to be ready..."
@@ -846,12 +840,12 @@ setup_database() {
     
     # Try to connect to database with explicit password
     print_message "Attempting database connection..."
-    if docker compose -f docker-compose.prod.yml --env-file "${CURRENT_DIR}/.env" exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
+    if docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
         print_message "Database connection successful"
     else
         print_error "Database connection failed"
         print_message "Attempting to connect with explicit password..."
-        PGPASSWORD=${POSTGRES_PASSWORD} docker compose -f docker-compose.prod.yml --env-file "${CURRENT_DIR}/.env" exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l"
+        PGPASSWORD=${POSTGRES_PASSWORD} docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l"
         
         print_message "Please check if:"
         print_message "1. Docker is running"
