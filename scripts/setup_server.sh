@@ -613,6 +613,203 @@ EOL
     print_message "Additional security measures setup completed"
 }
 
+# Function to create docker-compose file
+create_docker_compose() {
+    print_message "Creating Docker Compose file..."
+    
+    # Create docker directory if it doesn't exist
+    mkdir -p docker
+    
+    # Create docker-compose file
+    cat > docker/docker-compose.prod.yml << EOL
+version: '3.8'
+
+services:
+  # API service
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_SLUG}_api
+    volumes:
+      - ../api:/app
+    env_file:
+      - ../api/.env
+    environment:
+      - DJANGO_SETTINGS_MODULE=project.settings.production
+      - DEBUG=False
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+
+  # Celery Worker
+  worker:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_SLUG}_worker
+    volumes:
+      - ../api:/app
+    env_file:
+      - ../api/.env
+    environment:
+      - DJANGO_SETTINGS_MODULE=project.settings.production
+      - DEBUG=False
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    command: celery -A project worker --loglevel=info
+    restart: unless-stopped
+
+  # Celery Beat Scheduler
+  scheduler:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_SLUG}_scheduler
+    volumes:
+      - ../api:/app
+    env_file:
+      - ../api/.env
+    environment:
+      - DJANGO_SETTINGS_MODULE=project.settings.production
+      - DEBUG=False
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    command: celery -A project beat --loglevel=info
+    restart: unless-stopped
+
+  # Database service
+  postgres:
+    image: postgres:15-alpine
+    container_name: ${PROJECT_SLUG}_postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis for caching and Celery results backend
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_SLUG}_redis
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # RabbitMQ for message broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ${PROJECT_SLUG}_rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=\${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=\${RABBITMQ_DEFAULT_PASS}
+      - RABBITMQ_DEFAULT_VHOST=\${RABBITMQ_DEFAULT_VHOST}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Nginx for reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ${PROJECT_SLUG}_nginx
+    volumes:
+      - ../nginx/conf.d:/etc/nginx/conf.d
+      - ../nginx/ssl:/etc/nginx/ssl
+      - ../api/static:/app/static
+      - ../api/media:/app/media
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  default:
+    name: ${PROJECT_SLUG}_network
+EOL
+
+    print_message "Docker Compose file created successfully"
+}
+
+# Function to setup database
+setup_database() {
+    print_message "Setting up database..."
+    
+    # Create docker directory and docker-compose file
+    create_docker_compose
+    
+    # Create required directories
+    mkdir -p nginx/conf.d nginx/ssl
+    
+    # Start database container
+    print_message "Starting database container..."
+    cd docker && docker compose -f docker-compose.prod.yml up -d postgres
+    
+    # Wait for database to be ready
+    print_message "Waiting for database to be ready..."
+    sleep 10
+    
+    # Verify database connection
+    print_message "Verifying database connection..."
+    if docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${DB_USER} -d ${DB_NAME} -c "\l" > /dev/null 2>&1; then
+        print_message "Database connection successful"
+    else
+        print_error "Database connection failed"
+        print_message "Please check if:"
+        print_message "1. Docker is running"
+        print_message "2. Environment variables are set correctly"
+        print_message "3. Port 5432 is available"
+        exit 1
+    fi
+    
+    cd ..
+}
+
 # Main function
 main() {
     print_message "Starting server setup..."
@@ -737,6 +934,9 @@ EOL
     
     # Setup auto-deployment
     setup_auto_deployment
+    
+    # Setup database
+    setup_database
     
     # Run deployment script
     cd ${PROJECT_DIR} && ./scripts/deploy_production.sh
