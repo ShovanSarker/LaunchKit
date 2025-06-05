@@ -302,7 +302,7 @@ setup_database() {
     print_message "Setting up database..."
     
     # Create docker directory if it doesn't exist
-    mkdir -p docker
+    mkdir -p "${PROJECT_ROOT}/docker"
     
     # Create docker-compose file
     create_docker_compose
@@ -312,7 +312,7 @@ setup_database() {
     
     # Start database container
     print_message "Starting database container..."
-    cd docker && docker-compose -f docker-compose.prod.yml up -d postgres
+    cd docker && docker compose -f docker-compose.prod.yml up -d postgres
     
     # Wait for database to be ready
     print_message "Waiting for database to be ready..."
@@ -320,7 +320,7 @@ setup_database() {
     
     # Verify database connection
     print_message "Verifying database connection..."
-    if docker-compose -f docker-compose.prod.yml exec -T postgres psql -U ${DB_USER} -d ${DB_NAME} -c "\l" > /dev/null 2>&1; then
+    if docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
         print_message "Database connection successful"
     else
         print_error "Database connection failed"

@@ -110,8 +110,17 @@ configure_firewall() {
 setup_nginx() {
     print_message "Setting up Nginx..."
     
-    # Get domain information
-    BASE_DOMAIN=$(get_input "Enter your base domain (e.g., example.com)" "example.com")
+    # Load environment variables
+    if [ ! -f .env ]; then
+        print_error ".env file not found!"
+        print_message "Please run ./scripts/setup_env.sh first to create the environment files."
+        exit 1
+    fi
+    
+    # Load environment variables
+    set -a
+    source .env
+    set +a
     
     # Create directory for environment templates
     mkdir -p templates/env/production
@@ -130,7 +139,7 @@ EOL
 # Main frontend server
 server {
     listen 80;
-    server_name ${BASE_DOMAIN} www.${BASE_DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN};
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -157,7 +166,7 @@ server {
 # API server
 server {
     listen 80;
-    server_name api.${BASE_DOMAIN};
+    server_name api.${DOMAIN};
 
     # Security headers
     add_header X-Frame-Options "DENY" always;
@@ -168,7 +177,7 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # CORS headers
-    add_header 'Access-Control-Allow-Origin' 'https://${BASE_DOMAIN}' always;
+    add_header 'Access-Control-Allow-Origin' 'https://${DOMAIN}' always;
     add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
     add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
     add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
@@ -187,7 +196,7 @@ server {
 
         # Handle OPTIONS method for CORS
         if (\$request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' 'https://${BASE_DOMAIN}' always;
+            add_header 'Access-Control-Allow-Origin' 'https://${DOMAIN}' always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
             add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
             add_header 'Access-Control-Max-Age' 1728000;
@@ -201,7 +210,7 @@ server {
 # Monitoring server
 server {
     listen 80;
-    server_name monitor.${BASE_DOMAIN};
+    server_name monitor.${DOMAIN};
 
     # Basic auth for monitoring
     auth_basic "Monitoring Access";
@@ -246,25 +255,16 @@ EOL
     MONITOR_PASS=$(get_input "Enter monitoring password" "monitor123")
     htpasswd -bc /etc/nginx/.htpasswd "$MONITOR_USER" "$MONITOR_PASS"
     
-    # Create environment templates if they don't exist
-    if [ ! -f templates/env/production/api.env.template ]; then
-        create_env_files
-    fi
-    
-    # Update environment templates with the domain
-    sed -i "s/example.com/${BASE_DOMAIN}/g" templates/env/production/api.env.template
-    sed -i "s/example.com/${BASE_DOMAIN}/g" templates/env/production/app.env.template
-    
     # Test Nginx configuration
     nginx -t
     
     # Reload Nginx
     systemctl reload nginx
     
-    print_message "Nginx configured for domain: ${BASE_DOMAIN}"
-    print_message "Frontend will be available at: https://${BASE_DOMAIN}"
-    print_message "API will be available at: https://api.${BASE_DOMAIN}"
-    print_message "Monitoring will be available at: https://monitor.${BASE_DOMAIN}"
+    print_message "Nginx configured for domain: ${DOMAIN}"
+    print_message "Frontend will be available at: https://${DOMAIN}"
+    print_message "API will be available at: https://api.${DOMAIN}"
+    print_message "Monitoring will be available at: https://monitor.${DOMAIN}"
 }
 
 # Function to setup monitoring
@@ -345,8 +345,8 @@ EOL
     cat > /etc/grafana/grafana.ini << EOL
 [server]
 http_port = 3000
-domain = monitor.${BASE_DOMAIN}
-root_url = https://monitor.${BASE_DOMAIN}/
+domain = monitor.${DOMAIN}
+root_url = https://monitor.${DOMAIN}/
 
 [security]
 admin_user = admin
@@ -434,9 +434,9 @@ EOL
             "DELETE"
         ],
         "AllowedOrigins": [
-            "https://${BASE_DOMAIN}",
-            "https://www.${BASE_DOMAIN}",
-            "https://api.${BASE_DOMAIN}"
+            "https://${DOMAIN}",
+            "https://www.${DOMAIN}",
+            "https://api.${DOMAIN}"
         ],
         "ExposeHeaders": [
             "ETag"
@@ -497,9 +497,9 @@ EOL
         cat > /tmp/spaces-cors.json << EOL
 {
     "AllowedOrigins": [
-        "https://${BASE_DOMAIN}",
-        "https://www.${BASE_DOMAIN}",
-        "https://api.${BASE_DOMAIN}"
+        "https://${DOMAIN}",
+        "https://www.${DOMAIN}",
+        "https://api.${DOMAIN}"
     ],
     "AllowedMethods": [
         "GET",

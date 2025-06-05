@@ -62,7 +62,7 @@ Run the environment setup script:
 ```
 
 The script will prompt for:
-- Base domain (e.g., example.com)
+- Domain name (e.g., example.com)
 - Email for Let's Encrypt
 - Project slug (e.g., launchkit)
 - Database password
@@ -105,7 +105,7 @@ The script will:
    - Follow the DNS configuration steps
    - Wait for DNS propagation
 
-### 4. Storage Setup
+### 5. Storage Setup
 
 #### DigitalOcean Spaces Setup (Recommended)
 1. Create Spaces:
@@ -126,9 +126,9 @@ The script will:
    ```json
    {
        "AllowedOrigins": [
-           "https://lk.zero-zero-nine.com",
-           "https://www.lk.zero-zero-nine.com",
-           "https://api.lk.zero-zero-nine.com"
+           "https://your-domain.com",
+           "https://www.your-domain.com",
+           "https://api.your-domain.com"
        ],
        "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
        "AllowedHeaders": ["*"],
@@ -197,74 +197,28 @@ The script will:
    ]
    ```
 
-### 5. SSL Certificate Setup
+### 6. Deployment
+
+Run the deployment script:
 
 ```bash
-# Install Certbot
-sudo apt-get update
-sudo apt-get install certbot python3-certbot-nginx
-
-# Obtain SSL certificates
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d api.your-domain.com -d monitor.your-domain.com --email your-email@example.com --agree-tos --non-interactive
+./scripts/deploy_production.sh
 ```
 
-### 6. Database Setup
+The script will:
+1. Check requirements (Docker, docker-compose, git, certbot)
+2. Load environment variables
+3. Check storage buckets
+4. Set up SSL certificates
+5. Create and start the database
+6. Pull latest changes
+7. Deploy frontend and backend
+8. Start all services with Docker
+9. Verify security configuration
+10. Set up monitoring
+11. Perform health checks
 
-1. Create docker-compose.prod.yml:
-```bash
-# Create the production docker-compose file
-cp docker-compose.yml docker-compose.prod.yml
-```
-
-2. Update database configuration in docker-compose.prod.yml:
-```yaml
-services:
-  db:
-    image: postgres:13
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-    networks:
-      - app-network
-
-volumes:
-  postgres_data:
-
-networks:
-  app-network:
-    driver: bridge
-```
-
-3. Start the database:
-```bash
-# Start the database container
-docker-compose -f docker-compose.prod.yml up -d db
-
-# Wait for database to be ready
-sleep 10
-
-# Verify database connection
-docker-compose -f docker-compose.prod.yml exec db psql -U ${DB_USER} -d ${DB_NAME} -c "\l"
-```
-
-### 7. Application Deployment
-
-```bash
-# Build and start the containers
-docker-compose -f docker-compose.prod.yml build
-docker-compose -f docker-compose.prod.yml up -d
-
-# Run migrations
-docker-compose -f docker-compose.prod.yml exec api python manage.py migrate
-
-# Collect static files
-docker-compose -f docker-compose.prod.yml exec api python manage.py collectstatic --noinput
-```
-
-### 8. Monitoring Setup
+### 7. Monitoring Setup
 
 1. Access Grafana:
    - URL: `https://monitor.your-domain.com`
@@ -275,7 +229,7 @@ docker-compose -f docker-compose.prod.yml exec api python manage.py collectstati
    - Server metrics
    - Database metrics
 
-### 9. Security Verification
+### 8. Security Verification
 
 ```bash
 # Check firewall rules
@@ -288,7 +242,7 @@ sudo nginx -t
 curl -I https://your-domain.com
 ```
 
-### 10. Backup Verification
+### 9. Backup Verification
 
 ```bash
 # Check backup status
@@ -298,22 +252,15 @@ sudo systemctl status backup.service
 ls -l /backup/
 ```
 
-### 11. Final Checks
+### 10. Final Checks
 
 ```bash
 # Check service status
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker/docker-compose.prod.yml ps
 
 # Monitor logs
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker/docker-compose.prod.yml logs -f
 ```
-
-### 12. Post-Deployment Tasks
-
-1. Set up monitoring alerts in Grafana
-2. Configure error reporting in Sentry
-3. Set up regular maintenance tasks
-4. Document the deployment
 
 ## Troubleshooting
 
@@ -321,27 +268,27 @@ docker-compose -f docker-compose.prod.yml logs -f
 
 ```bash
 # Check service logs
-docker-compose -f docker-compose.prod.yml logs -f [service-name]
+docker compose -f docker/docker-compose.prod.yml logs -f [service-name]
 
 # Restart service
-docker-compose -f docker-compose.prod.yml restart [service-name]
+docker compose -f docker/docker-compose.prod.yml restart [service-name]
 ```
 
 ### Database Issues
 
 ```bash
 # Check database logs
-docker-compose -f docker-compose.prod.yml logs -f db
+docker compose -f docker/docker-compose.prod.yml logs -f postgres
 
-# Access database (replace 'your-project-slug' with your actual project slug)
-docker-compose -f docker-compose.prod.yml exec db psql -U your-project-slug
+# Access database
+docker compose -f docker/docker-compose.prod.yml exec postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB}
 ```
 
 ### Storage Issues
 
 ```bash
 # Test storage connection
-docker-compose -f docker-compose.prod.yml exec api python manage.py check_storage
+docker compose -f docker/docker-compose.prod.yml exec api python manage.py check_storage
 
 # Verify permissions
 aws s3 ls s3://your-bucket-name/ --recursive
@@ -354,14 +301,14 @@ aws s3 ls s3://your-bucket-name/ --recursive
 ```bash
 # Revert to previous version
 git checkout <previous-version>
-docker-compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker/docker-compose.prod.yml up -d --build
 ```
 
 ### Database Rollback
 
 ```bash
-# Restore from backup (replace 'your-project-slug' with your actual project slug)
-sudo -u postgres psql your-project-slug < /backup/your-project-slug_backup.sql
+# Restore from backup
+sudo -u postgres psql ${POSTGRES_DB} < /backup/${POSTGRES_DB}_backup.sql
 ```
 
 ## Scaling
@@ -370,7 +317,7 @@ sudo -u postgres psql your-project-slug < /backup/your-project-slug_backup.sql
 
 ```bash
 # Scale API service
-docker-compose -f docker-compose.prod.yml up -d --scale api=3
+docker compose -f docker/docker-compose.prod.yml up -d --scale api=3
 ```
 
 ### Load Balancer Setup
@@ -388,14 +335,14 @@ docker-compose -f docker-compose.prod.yml up -d --scale api=3
 git pull origin main
 
 # Rebuild and restart
-docker-compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker/docker-compose.prod.yml up -d --build
 ```
 
 ### Database Maintenance
 
 ```bash
-# Vacuum database (replace 'your-project-slug' with your actual project slug)
-docker-compose -f docker-compose.prod.yml exec db vacuumdb -U your-project-slug -d your-project-slug
+# Vacuum database
+docker compose -f docker/docker-compose.prod.yml exec postgres vacuumdb -U ${POSTGRES_USER} -d ${POSTGRES_DB}
 ```
 
 ### Log Rotation
