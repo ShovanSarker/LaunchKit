@@ -38,7 +38,7 @@ load_env() {
     
     if [ ! -f .env ]; then
         print_error ".env file not found!"
-        print_message "Please run ./scripts/setup_env.sh first to create the environment files."
+        print_message "Please run ./scripts/setup_server.sh first to create the environment files."
         exit 1
     fi
     
@@ -50,13 +50,13 @@ load_env() {
     # Check required variables
     if [ -z "$DOMAIN" ]; then
         print_error "DOMAIN is not set in .env file"
-        print_message "Please run ./scripts/setup_env.sh to set up your environment variables."
+        print_message "Please run ./scripts/setup_server.sh to set up your environment variables."
         exit 1
     fi
     
     if [ -z "$EMAIL" ]; then
         print_error "EMAIL is not set in .env file"
-        print_message "Please run ./scripts/setup_env.sh to set up your environment variables."
+        print_message "Please run ./scripts/setup_server.sh to set up your environment variables."
         exit 1
     fi
     
@@ -102,7 +102,7 @@ setup_ssl() {
     # Get domain and email from environment
     if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
         print_error "DOMAIN or EMAIL not set in environment"
-        print_message "Please run ./scripts/setup_env.sh to set up your environment variables."
+        print_message "Please run ./scripts/setup_server.sh to set up your environment variables."
         exit 1
     fi
     

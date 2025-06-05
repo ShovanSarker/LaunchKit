@@ -25,6 +25,31 @@ cd LaunchKit
 sudo ./scripts/setup_server.sh
 ```
 
+The setup script will prompt for:
+- Domain name (e.g., example.com)
+- Email for Let's Encrypt
+- Project slug (e.g., launchkit)
+- Database password
+- RabbitMQ password
+- SendGrid settings:
+  - API Key
+  - Verified sender email
+  - Sender name
+- Storage provider (AWS S3 or DO Spaces)
+- Storage credentials
+
+The script will:
+1. Install system dependencies
+2. Install and configure Docker
+3. Set up firewall rules
+4. Configure Nginx
+5. Set up monitoring (Prometheus, Grafana)
+6. Configure backup service
+7. Set up security measures
+8. Create environment files
+9. Configure storage settings
+10. Set up auto-deployment
+
 ### 2. Domain Configuration
 
 Point your domain's DNS to your server IP by adding the following A records:
@@ -53,34 +78,7 @@ dig monitor.your-domain.com
 
 Note: SSL certificate setup will fail if any of these subdomains are not properly configured in DNS.
 
-### 3. Environment Setup
-
-Run the environment setup script:
-
-```bash
-./scripts/setup_env.sh
-```
-
-The script will prompt for:
-- Domain name (e.g., example.com)
-- Email for Let's Encrypt
-- Project slug (e.g., launchkit)
-- Database password
-- RabbitMQ password
-- SendGrid settings:
-  - API Key
-  - Verified sender email
-  - Sender name
-- Storage provider (AWS S3 or DO Spaces)
-- Storage credentials
-
-The script will:
-1. Generate secure random strings for secrets
-2. Create environment files with proper formatting
-3. Configure storage settings based on your provider choice
-4. Set up SendGrid email configuration
-
-### 4. Email Setup (SendGrid)
+### 3. Email Setup (SendGrid)
 
 1. Create a SendGrid account:
    - Go to SendGrid: https://signup.sendgrid.com/
@@ -105,7 +103,7 @@ The script will:
    - Follow the DNS configuration steps
    - Wait for DNS propagation
 
-### 5. Storage Setup
+### 4. Storage Setup
 
 #### DigitalOcean Spaces Setup (Recommended)
 1. Create Spaces:
@@ -197,7 +195,7 @@ The script will:
    ]
    ```
 
-### 6. Deployment
+### 5. Deployment
 
 Run the deployment script:
 
@@ -218,7 +216,7 @@ The script will:
 10. Set up monitoring
 11. Perform health checks
 
-### 7. Monitoring Setup
+### 6. Monitoring Setup
 
 1. Access Grafana:
    - URL: `https://monitor.your-domain.com`
@@ -229,7 +227,7 @@ The script will:
    - Server metrics
    - Database metrics
 
-### 8. Security Verification
+### 7. Security Verification
 
 ```bash
 # Check firewall rules
@@ -242,7 +240,7 @@ sudo nginx -t
 curl -I https://your-domain.com
 ```
 
-### 9. Backup Verification
+### 8. Backup Verification
 
 ```bash
 # Check backup status
@@ -252,7 +250,7 @@ sudo systemctl status backup.service
 ls -l /backup/
 ```
 
-### 10. Final Checks
+### 9. Final Checks
 
 ```bash
 # Check service status
