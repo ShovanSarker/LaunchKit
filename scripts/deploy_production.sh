@@ -38,10 +38,31 @@ load_env() {
     
     if [ ! -f .env ]; then
         print_error ".env file not found!"
+        print_message "Please run ./scripts/setup_env.sh first to create the environment files."
         exit 1
     fi
     
+    # Load environment variables
+    set -a
     source .env
+    set +a
+    
+    # Check required variables
+    if [ -z "$DOMAIN" ]; then
+        print_error "DOMAIN is not set in .env file"
+        print_message "Please run ./scripts/setup_env.sh to set up your environment variables."
+        exit 1
+    fi
+    
+    if [ -z "$EMAIL" ]; then
+        print_error "EMAIL is not set in .env file"
+        print_message "Please run ./scripts/setup_env.sh to set up your environment variables."
+        exit 1
+    fi
+    
+    print_message "Environment variables loaded successfully"
+    print_message "Domain: ${DOMAIN}"
+    print_message "Email: ${EMAIL}"
 }
 
 # Check AWS S3 buckets
@@ -61,8 +82,19 @@ check_s3_buckets() {
     
     # Check if AWS CLI is installed
     if ! command -v aws &> /dev/null; then
-        print_warning "AWS CLI not installed. Cannot verify bucket existence."
-        return
+        print_message "Installing AWS CLI..."
+        apt-get update
+        apt-get install -y awscli
+        
+        # Configure AWS CLI if credentials are available
+        if [ ! -z "$AWS_ACCESS_KEY_ID" ] && [ ! -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            aws configure set default.region ${AWS_S3_REGION_NAME}
+        else
+            print_warning "AWS credentials not found in environment. Please configure AWS CLI manually."
+            return
+        fi
     fi
     
     # Check if buckets exist
@@ -83,8 +115,12 @@ check_s3_buckets() {
 setup_ssl() {
     print_message "Setting up SSL certificates..."
     
-    # Get domain from environment
-    DOMAIN=${DOMAIN:-"example.com"}
+    # Get domain and email from environment
+    if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
+        print_error "DOMAIN or EMAIL not set in environment"
+        print_message "Please run ./scripts/setup_env.sh to set up your environment variables."
+        exit 1
+    fi
     
     # Install Certbot if not installed
     if ! command -v certbot &> /dev/null; then
@@ -94,12 +130,22 @@ setup_ssl() {
     fi
     
     # Obtain SSL certificates
-    certbot --nginx -d ${DOMAIN} -d www.${DOMAIN} -d api.${DOMAIN} -d monitor.${DOMAIN} --non-interactive --agree-tos --email ${ADMIN_EMAIL}
+    print_message "Obtaining SSL certificates for domain: ${DOMAIN}"
+    certbot --nginx \
+        -d ${DOMAIN} \
+        -d www.${DOMAIN} \
+        -d api.${DOMAIN} \
+        -d monitor.${DOMAIN} \
+        --email ${EMAIL} \
+        --agree-tos \
+        --non-interactive
     
     if [ $? -ne 0 ]; then
         print_error "SSL certificate setup failed"
         exit 1
     fi
+    
+    print_message "SSL certificates obtained successfully"
 }
 
 # Setup database
@@ -286,6 +332,12 @@ health_check() {
 # Main deployment process
 main() {
     print_message "Starting production deployment..."
+    
+    # Check if running as root
+    if [ "$EUID" -ne 0 ]; then
+        print_error "Please run as root"
+        exit 1
+    fi
     
     # Check requirements
     check_requirements

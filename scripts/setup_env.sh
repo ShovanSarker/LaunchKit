@@ -96,6 +96,7 @@ main() {
     # Get domain information
     DOMAIN=$(get_input "Enter your domain name" "example.com")
     EMAIL=$(get_input "Enter your email for Let's Encrypt" "admin@example.com")
+    PROJECT_SLUG=$(get_input "Enter project slug (e.g., launchkit)" "launchkit")
     
     # Generate secrets
     DJANGO_SECRET_KEY=$(generate_random_string)
@@ -105,9 +106,11 @@ main() {
     DB_PASSWORD=$(get_input "Enter database password" "$(generate_random_string)")
     RABBITMQ_PASSWORD=$(get_input "Enter RabbitMQ password" "$(generate_random_string)")
     
-    # Get email settings
-    EMAIL_USER=$(get_input "Enter email address" "admin@${DOMAIN}")
-    EMAIL_PASSWORD=$(get_input "Enter email password" "")
+    # Get SendGrid settings
+    print_message "Setting up SendGrid email configuration..."
+    SENDGRID_API_KEY=$(get_input "Enter SendGrid API Key" "")
+    SENDGRID_FROM_EMAIL=$(get_input "Enter SendGrid verified sender email" "noreply@${DOMAIN}")
+    SENDGRID_FROM_NAME=$(get_input "Enter SendGrid sender name" "${PROJECT_SLUG}")
     
     # Create .env file for API
     cat > .env << EOL
@@ -117,9 +120,13 @@ SECRET_KEY=${DJANGO_SECRET_KEY}
 ALLOWED_HOSTS=${DOMAIN}
 CSRF_TRUSTED_ORIGINS=https://${DOMAIN}
 
+# Domain and Email settings
+DOMAIN=${DOMAIN}
+EMAIL=${EMAIL}
+
 # Database settings
-DB_NAME=launchkit
-DB_USER=launchkit
+DB_NAME=${PROJECT_SLUG}
+DB_USER=${PROJECT_SLUG}
 DB_PASSWORD=${DB_PASSWORD}
 DB_HOST=localhost
 DB_PORT=5432
@@ -128,16 +135,15 @@ DB_PORT=5432
 REDIS_URL=redis://localhost:6379/0
 
 # RabbitMQ settings
-RABBITMQ_DEFAULT_USER=launchkit
+RABBITMQ_DEFAULT_USER=${PROJECT_SLUG}
 RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
 
-# Email settings
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=${EMAIL_USER}
-EMAIL_HOST_PASSWORD=${EMAIL_PASSWORD}
-DEFAULT_FROM_EMAIL=${EMAIL_USER}
+# SendGrid Email settings
+EMAIL_BACKEND=sendgrid_backend.SendgridBackend
+SENDGRID_API_KEY=${SENDGRID_API_KEY}
+SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME}
+DEFAULT_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
 EOL
     
     # Get storage provider

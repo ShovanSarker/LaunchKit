@@ -47,9 +47,13 @@ Run the environment setup script:
 The script will prompt for:
 - Base domain (e.g., example.com)
 - Email for Let's Encrypt
+- Project slug (e.g., launchkit)
 - Database password
 - RabbitMQ password
-- Email settings
+- SendGrid settings:
+  - API Key
+  - Verified sender email
+  - Sender name
 - Storage provider (AWS S3 or DO Spaces)
 - Storage credentials
 
@@ -57,6 +61,32 @@ The script will:
 1. Generate secure random strings for secrets
 2. Create environment files with proper formatting
 3. Configure storage settings based on your provider choice
+4. Set up SendGrid email configuration
+
+### 4. Email Setup (SendGrid)
+
+1. Create a SendGrid account:
+   - Go to SendGrid: https://signup.sendgrid.com/
+   - Complete the signup process
+   - Verify your domain
+
+2. Create an API Key:
+   - Go to Settings > API Keys
+   - Click 'Create API Key'
+   - Choose 'Full Access' or 'Restricted Access' with Mail Send permissions
+   - Copy the API key
+
+3. Verify your sender email:
+   - Go to Settings > Sender Authentication
+   - Click 'Verify a Single Sender'
+   - Fill in the required information
+   - Click 'Create'
+
+4. Configure domain authentication (recommended):
+   - Go to Settings > Sender Authentication
+   - Click 'Authenticate Your Domain'
+   - Follow the DNS configuration steps
+   - Wait for DNS propagation
 
 ### 4. Storage Setup
 
@@ -160,10 +190,10 @@ sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d api.your-domai
 # Access PostgreSQL
 sudo -u postgres psql
 
-# Create database and user
-CREATE DATABASE launchkit;
-CREATE USER launchkit WITH PASSWORD 'your-password';
-GRANT ALL PRIVILEGES ON DATABASE launchkit TO launchkit;
+# Create database and user (replace 'your-project-slug' with your actual project slug)
+CREATE DATABASE your-project-slug;
+CREATE USER your-project-slug WITH PASSWORD 'your-password';
+GRANT ALL PRIVILEGES ON DATABASE your-project-slug TO your-project-slug;
 ```
 
 ### 7. Application Deployment
@@ -249,8 +279,8 @@ docker-compose -f docker-compose.prod.yml restart [service-name]
 # Check database logs
 docker-compose -f docker-compose.prod.yml logs -f db
 
-# Access database
-docker-compose -f docker-compose.prod.yml exec db psql -U launchkit
+# Access database (replace 'your-project-slug' with your actual project slug)
+docker-compose -f docker-compose.prod.yml exec db psql -U your-project-slug
 ```
 
 ### Storage Issues
@@ -276,8 +306,8 @@ docker-compose -f docker-compose.prod.yml up -d --build
 ### Database Rollback
 
 ```bash
-# Restore from backup
-sudo -u postgres psql launchkit < /backup/launchkit_backup.sql
+# Restore from backup (replace 'your-project-slug' with your actual project slug)
+sudo -u postgres psql your-project-slug < /backup/your-project-slug_backup.sql
 ```
 
 ## Scaling
@@ -310,8 +340,8 @@ docker-compose -f docker-compose.prod.yml up -d --build
 ### Database Maintenance
 
 ```bash
-# Vacuum database
-docker-compose -f docker-compose.prod.yml exec db vacuumdb -U launchkit -d launchkit
+# Vacuum database (replace 'your-project-slug' with your actual project slug)
+docker-compose -f docker-compose.prod.yml exec db vacuumdb -U your-project-slug -d your-project-slug
 ```
 
 ### Log Rotation
