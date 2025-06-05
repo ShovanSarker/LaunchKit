@@ -36,6 +36,23 @@ api     -> your-server-ip
 monitor -> your-server-ip
 ```
 
+Important: All subdomains must be properly configured in your DNS settings before running the SSL certificate setup. The following subdomains are required:
+- www.your-domain.com
+- api.your-domain.com
+- monitor.your-domain.com
+
+To verify DNS configuration:
+```bash
+# Check if DNS records are properly set
+dig www.your-domain.com
+dig api.your-domain.com
+dig monitor.your-domain.com
+
+# Wait for DNS propagation (can take up to 48 hours, but usually much faster)
+```
+
+Note: SSL certificate setup will fail if any of these subdomains are not properly configured in DNS.
+
 ### 3. Environment Setup
 
 Run the environment setup script:

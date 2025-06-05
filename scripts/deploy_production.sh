@@ -65,9 +65,9 @@ load_env() {
     print_message "Email: ${EMAIL}"
 }
 
-# Check AWS S3 buckets
-check_s3_buckets() {
-    print_message "Checking AWS S3 buckets..."
+# Check storage buckets
+check_storage_buckets() {
+    print_message "Checking storage buckets..."
     
     # Get project name from .env or use default
     PROJECT_NAME=${PROJECT_NAME:-"launchkit"}
@@ -76,38 +76,22 @@ check_s3_buckets() {
     STATIC_BUCKET="${PROJECT_NAME}-static"
     MEDIA_BUCKET="${PROJECT_NAME}-media"
     
-    print_message "Required S3 buckets:"
+    print_message "Required storage buckets:"
     print_message "1. Static files bucket: ${STATIC_BUCKET}"
     print_message "2. Media files bucket: ${MEDIA_BUCKET}"
     
-    # Check if AWS CLI is installed
-    if ! command -v aws &> /dev/null; then
-        print_message "Installing AWS CLI..."
-        apt-get update
-        apt-get install -y awscli
-        
-        # Configure AWS CLI if credentials are available
-        if [ ! -z "$AWS_ACCESS_KEY_ID" ] && [ ! -z "$AWS_SECRET_ACCESS_KEY" ]; then
-            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-            aws configure set default.region ${AWS_S3_REGION_NAME}
-        else
-            print_warning "AWS credentials not found in environment. Please configure AWS CLI manually."
-            return
-        fi
-    fi
-    
-    # Check if buckets exist
-    if aws s3 ls "s3://${STATIC_BUCKET}" 2>&1 | grep -q 'NoSuchBucket'; then
-        print_warning "Static bucket '${STATIC_BUCKET}' does not exist. Please create it."
+    # Check if using DO Spaces
+    if [ ! -z "$AWS_S3_ENDPOINT_URL" ] && [[ "$AWS_S3_ENDPOINT_URL" == *"digitaloceanspaces.com"* ]]; then
+        print_message "Using DigitalOcean Spaces"
+        print_message "Please ensure you have created the following Spaces:"
+        print_message "1. ${STATIC_BUCKET}"
+        print_message "2. ${MEDIA_BUCKET}"
+        print_message "You can create them at: https://cloud.digitalocean.com/spaces"
     else
-        print_message "Static bucket '${STATIC_BUCKET}' exists."
-    fi
-    
-    if aws s3 ls "s3://${MEDIA_BUCKET}" 2>&1 | grep -q 'NoSuchBucket'; then
-        print_warning "Media bucket '${MEDIA_BUCKET}' does not exist. Please create it."
-    else
-        print_message "Media bucket '${MEDIA_BUCKET}' exists."
+        print_message "Using AWS S3"
+        print_message "Please ensure you have created the following S3 buckets:"
+        print_message "1. ${STATIC_BUCKET}"
+        print_message "2. ${MEDIA_BUCKET}"
     fi
 }
 
@@ -345,8 +329,8 @@ main() {
     # Load environment variables
     load_env
     
-    # Check S3 buckets
-    check_s3_buckets
+    # Check storage buckets
+    check_storage_buckets
     
     # Setup SSL certificates
     setup_ssl
