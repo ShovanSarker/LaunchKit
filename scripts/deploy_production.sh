@@ -136,20 +136,26 @@ setup_ssl() {
 setup_database() {
     print_message "Setting up database..."
     
-    # Get database credentials from environment
-    DB_NAME=${DB_NAME:-"launchkit"}
-    DB_USER=${DB_USER:-"launchkit"}
-    DB_PASSWORD=${DB_PASSWORD:-"your-password"}
+    # Check if docker-compose.prod.yml exists
+    if [ ! -f docker-compose.prod.yml ]; then
+        print_message "Creating docker-compose.prod.yml..."
+        cp docker-compose.yml docker-compose.prod.yml
+    fi
     
-    # Create database and user
-    docker-compose -f docker-compose.prod.yml exec -T db psql -U postgres << EOF
-    CREATE DATABASE ${DB_NAME};
-    CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';
-    GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};
-EOF
+    # Start database container
+    print_message "Starting database container..."
+    docker-compose -f docker-compose.prod.yml up -d db
     
-    if [ $? -ne 0 ]; then
-        print_error "Database setup failed"
+    # Wait for database to be ready
+    print_message "Waiting for database to be ready..."
+    sleep 10
+    
+    # Verify database connection
+    print_message "Verifying database connection..."
+    if docker-compose -f docker-compose.prod.yml exec -T db psql -U ${DB_USER} -d ${DB_NAME} -c "\l" > /dev/null 2>&1; then
+        print_message "Database connection successful"
+    else
+        print_error "Database connection failed"
         exit 1
     fi
 }

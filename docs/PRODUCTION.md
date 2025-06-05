@@ -107,7 +107,47 @@ The script will:
 
 ### 4. Storage Setup
 
-#### AWS S3 Setup
+#### DigitalOcean Spaces Setup (Recommended)
+1. Create Spaces:
+   - Go to DigitalOcean Console: https://cloud.digitalocean.com/spaces
+   - Click 'Create Space'
+   - Create two spaces:
+     - `launchkit-static` for static files
+     - `launchkit-media` for media files
+   - Select region (e.g., nyc3)
+   - Choose 'Public' access
+   - Click 'Create Space'
+
+2. Configure CORS for each Space:
+   - Go to your Space
+   - Click 'Settings'
+   - Under 'CORS Configurations', click 'Add CORS Configuration'
+   - Add the following configuration:
+   ```json
+   {
+       "AllowedOrigins": [
+           "https://lk.zero-zero-nine.com",
+           "https://www.lk.zero-zero-nine.com",
+           "https://api.lk.zero-zero-nine.com"
+       ],
+       "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+       "AllowedHeaders": ["*"],
+       "MaxAgeSeconds": 3600
+   }
+   ```
+
+3. Configure CDN (optional):
+   - Go to your Space
+   - Click 'Settings'
+   - Under 'CDN', click 'Enable CDN'
+   - Choose your CDN endpoint
+
+4. Get API Keys:
+   - Go to API > Tokens/Keys
+   - Generate new Spaces access key
+   - Save both the key and secret
+
+#### AWS S3 Setup (Alternative)
 1. Create an S3 bucket:
    - Go to AWS S3 Console: https://s3.console.aws.amazon.com
    - Click 'Create bucket'
@@ -157,39 +197,6 @@ The script will:
    ]
    ```
 
-#### DigitalOcean Spaces Setup
-1. Create a Space:
-   - Go to DigitalOcean Console: https://cloud.digitalocean.com/spaces
-   - Click 'Create Space'
-   - Enter Space name
-   - Select region
-   - Choose 'Public' access
-   - Click 'Create Space'
-
-2. Configure CORS:
-   - Go to your Space
-   - Click 'Settings'
-   - Under 'CORS Configurations', click 'Add CORS Configuration'
-   - Add the following configuration:
-   ```json
-   {
-       "AllowedOrigins": [
-           "https://your-domain.com",
-           "https://www.your-domain.com",
-           "https://api.your-domain.com"
-       ],
-       "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
-       "AllowedHeaders": ["*"],
-       "MaxAgeSeconds": 3600
-   }
-   ```
-
-3. Configure CDN (optional):
-   - Go to your Space
-   - Click 'Settings'
-   - Under 'CDN', click 'Enable CDN'
-   - Choose your CDN endpoint
-
 ### 5. SSL Certificate Setup
 
 ```bash
@@ -203,14 +210,44 @@ sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d api.your-domai
 
 ### 6. Database Setup
 
+1. Create docker-compose.prod.yml:
 ```bash
-# Access PostgreSQL
-sudo -u postgres psql
+# Create the production docker-compose file
+cp docker-compose.yml docker-compose.prod.yml
+```
 
-# Create database and user (replace 'your-project-slug' with your actual project slug)
-CREATE DATABASE your-project-slug;
-CREATE USER your-project-slug WITH PASSWORD 'your-password';
-GRANT ALL PRIVILEGES ON DATABASE your-project-slug TO your-project-slug;
+2. Update database configuration in docker-compose.prod.yml:
+```yaml
+services:
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge
+```
+
+3. Start the database:
+```bash
+# Start the database container
+docker-compose -f docker-compose.prod.yml up -d db
+
+# Wait for database to be ready
+sleep 10
+
+# Verify database connection
+docker-compose -f docker-compose.prod.yml exec db psql -U ${DB_USER} -d ${DB_NAME} -c "\l"
 ```
 
 ### 7. Application Deployment

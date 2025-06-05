@@ -147,7 +147,7 @@ DEFAULT_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
 EOL
     
     # Get storage provider
-    STORAGE_PROVIDER=$(get_input "Choose storage provider (aws/do)" "aws")
+    STORAGE_PROVIDER=$(get_input "Choose storage provider (do/aws)" "do")
     
     if [ "$STORAGE_PROVIDER" = "aws" ]; then
         setup_aws_storage
