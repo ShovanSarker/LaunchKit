@@ -810,6 +810,9 @@ setup_database() {
         set -a  # automatically export all variables
         source "${CURRENT_DIR}/.env"
         set +a
+        
+        # Copy .env file to docker directory
+        cp "${CURRENT_DIR}/.env" "${CURRENT_DIR}/docker/.env"
     else
         print_error "Environment file .env not found in ${CURRENT_DIR}"
         exit 1
