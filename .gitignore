@@ -88,3 +88,8 @@ celerybeat-schedule
 celerybeat.pid
 celerybeat-schedule.db
 *.pid
+
+# generated files from templates
+docker/*
+nginx/*
+prometheus/*
