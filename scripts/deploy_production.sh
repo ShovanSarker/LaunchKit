@@ -102,11 +102,11 @@ main() {
     
     # Build and start containers
     print_message "Building and starting containers..."
-    cd docker && docker compose -f docker-compose.prod.yml up -d --build
+    cd docker && docker compose up -d --build
     
     # Check if containers are running
     print_message "Checking container status..."
-    if docker compose -f docker-compose.prod.yml ps | grep -q "Up"; then
+    if docker compose ps | grep -q "Up"; then
         print_message "All containers are running successfully"
     else
         print_error "Some containers failed to start"

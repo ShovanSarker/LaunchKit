@@ -568,9 +568,7 @@ create_docker_compose() {
     mkdir -p docker
     
     # Create docker-compose file
-    cat > docker/docker-compose.prod.yml << EOL
-version: '3.8'
-
+    cat > docker/docker-compose.yml << EOL
 services:
   # API service
   api:
@@ -581,14 +579,12 @@ services:
     volumes:
       - ../api:/app
     env_file:
-      - ../.env
+      - .env
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=\${POSTGRES_DB}
-      - POSTGRES_USER=\${POSTGRES_USER}
-      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=5432
     depends_on:
       - postgres
       - redis
@@ -604,7 +600,7 @@ services:
     volumes:
       - ../app:/app
     env_file:
-      - ../app/.env
+      - .env
     depends_on:
       - api
     restart: unless-stopped
@@ -618,14 +614,12 @@ services:
     volumes:
       - ../api:/app
     env_file:
-      - ../.env
+      - .env
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=\${POSTGRES_DB}
-      - POSTGRES_USER=\${POSTGRES_USER}
-      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=5432
     depends_on:
       - postgres
       - redis
@@ -642,14 +636,12 @@ services:
     volumes:
       - ../api:/app
     env_file:
-      - ../.env
+      - .env
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=\${POSTGRES_DB}
-      - POSTGRES_USER=\${POSTGRES_USER}
-      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=5432
     depends_on:
       - postgres
       - redis
@@ -663,6 +655,8 @@ services:
     container_name: ${PROJECT_SLUG}_postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
+    env_file:
+      - .env
     environment:
       - POSTGRES_DB=\${POSTGRES_DB}
       - POSTGRES_USER=\${POSTGRES_USER}
@@ -695,6 +689,8 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: ${PROJECT_SLUG}_rabbitmq
+    env_file:
+      - .env
     environment:
       - RABBITMQ_DEFAULT_USER=\${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=\${RABBITMQ_DEFAULT_PASS}
@@ -731,7 +727,7 @@ services:
     image: prom/prometheus:latest
     container_name: ${PROJECT_SLUG}_prometheus
     volumes:
-      - ../prometheus:/etc/prometheus
+      - ../monitoring/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -747,10 +743,11 @@ services:
     image: grafana/grafana:latest
     container_name: ${PROJECT_SLUG}_grafana
     volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning
       - grafana_data:/var/lib/grafana
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=\${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=\${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
       - "3000:3000"
@@ -775,7 +772,7 @@ services:
   # Node Exporter for system metrics
   node-exporter:
     image: prom/node-exporter:latest
-    container_name: ${PROJECT_SLUG}_node_exporter
+    container_name: ${PROJECT_SLUG}_node-exporter
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -844,7 +841,7 @@ setup_database() {
     # Start database container with environment variables
     print_message "Starting database container..."
     cd "${CURRENT_DIR}/docker" && \
-    docker compose -f docker-compose.prod.yml up -d postgres
+    docker compose up -d postgres
     
     # Wait for database to be ready
     print_message "Waiting for database to be ready..."
@@ -860,12 +857,12 @@ setup_database() {
     
     # Try to connect to database with explicit password
     print_message "Attempting database connection..."
-    if docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
+    if docker compose exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
         print_message "Database connection successful"
     else
         print_error "Database connection failed"
         print_message "Attempting to connect with explicit password..."
-        PGPASSWORD=${POSTGRES_PASSWORD} docker compose -f docker-compose.prod.yml exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l"
+        PGPASSWORD=${POSTGRES_PASSWORD} docker compose exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l"
         
         print_message "Please check if:"
         print_message "1. Docker is running"
