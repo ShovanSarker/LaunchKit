@@ -25,8 +25,21 @@ print_success() {
 # Project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Detect environment
+if [ -f "${PROJECT_ROOT}/.env" ]; then
+    source "${PROJECT_ROOT}/.env"
+    if [ "$ENVIRONMENT" = "production" ]; then
+        ENV_TYPE="production"
+    else
+        ENV_TYPE="development"
+    fi
+else
+    ENV_TYPE="development"
+fi
+
 # Confirm with user
 echo -e "${RED}WARNING: This will remove all docker containers, volumes, and environment files.${NC}"
+echo -e "${RED}Environment: ${ENV_TYPE}${NC}"
 echo -e "${RED}This action cannot be undone.${NC}"
 read -p "Are you sure you want to proceed? (y/N) " -n 1 -r
 echo
@@ -38,11 +51,20 @@ fi
 
 # Stop and remove docker containers
 print_message "Stopping and removing Docker containers..."
-if [ -f "${PROJECT_ROOT}/docker/docker-compose.yml" ]; then
-    cd "${PROJECT_ROOT}/docker" && docker compose down -v --remove-orphans
-    print_success "Docker containers and volumes removed."
+if [ "$ENV_TYPE" = "production" ]; then
+    if [ -f "${PROJECT_ROOT}/docker/docker-compose.prod.yml" ]; then
+        cd "${PROJECT_ROOT}/docker" && docker compose -f docker-compose.prod.yml down -v --remove-orphans
+        print_success "Production Docker containers and volumes removed."
+    else
+        print_warning "docker-compose.prod.yml not found, skipping Docker cleanup."
+    fi
 else
-    print_warning "docker-compose.yml not found, skipping Docker cleanup."
+    if [ -f "${PROJECT_ROOT}/docker/docker-compose.yml" ]; then
+        cd "${PROJECT_ROOT}/docker" && docker compose down -v --remove-orphans
+        print_success "Development Docker containers and volumes removed."
+    else
+        print_warning "docker-compose.yml not found, skipping Docker cleanup."
+    fi
 fi
 
 # Remove environment files
@@ -65,6 +87,7 @@ done
 print_message "Removing generated scripts and configurations..."
 generated_files=(
     "${PROJECT_ROOT}/docker/docker-compose.yml"
+    "${PROJECT_ROOT}/docker/docker-compose.prod.yml"
     "${PROJECT_ROOT}/scripts/run_dev.sh"
     "${PROJECT_ROOT}/api/docker-entrypoint.sh"
 )
@@ -104,5 +127,32 @@ if [ -d "${PROJECT_ROOT}/logs" ]; then
     print_success "Logs directory removed."
 fi
 
+# Remove SSL certificates in production
+if [ "$ENV_TYPE" = "production" ]; then
+    print_message "Removing SSL certificates..."
+    if [ -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
+        certbot delete --cert-name "${DOMAIN}" --non-interactive
+        print_success "SSL certificates removed."
+    fi
+fi
+
+# Remove Nginx configurations
+print_message "Removing Nginx configurations..."
+nginx_dirs=(
+    "${PROJECT_ROOT}/nginx/conf.d"
+    "${PROJECT_ROOT}/nginx/ssl"
+)
+
+for dir in "${nginx_dirs[@]}"; do
+    if [ -d "$dir" ]; then
+        rm -rf "$dir"
+        print_success "Removed: $dir"
+    fi
+done
+
 print_message "Cleanup complete! Your project has been reset to its initial state."
-print_message "To set up the development environment again, run: ./scripts/setup_development.sh" 
+if [ "$ENV_TYPE" = "production" ]; then
+    print_message "To set up the production environment again, run: ./scripts/deploy_production.sh"
+else
+    print_message "To set up the development environment again, run: ./scripts/setup_development.sh"
+fi 
