@@ -587,15 +587,25 @@ services:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
     depends_on:
-      - db
-      - redis
-      - rabbitmq
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
     build:
       context: ../app
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=\${NEXT_PUBLIC_API_URL}
+        - NEXT_PUBLIC_APP_URL=\${NEXT_PUBLIC_APP_URL}
+        - NEXTAUTH_URL=\${NEXTAUTH_URL}
+        - NEXTAUTH_SECRET=\${NEXTAUTH_SECRET}
+        - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=\${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+        - NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=\${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}
     container_name: ${PROJECT_SLUG}_frontend
     volumes:
       - ../app:/app
@@ -624,9 +634,12 @@ services:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
     depends_on:
-      - api
-      - redis
-      - rabbitmq
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   scheduler:
@@ -645,9 +658,12 @@ services:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
     depends_on:
-      - api
-      - redis
-      - rabbitmq
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   db:
@@ -708,8 +724,10 @@ services:
       - "80:80"
       - "443:443"
     depends_on:
-      - api
-      - frontend
+      api:
+        condition: service_started
+      frontend:
+        condition: service_started
     restart: unless-stopped
 
   prometheus:
