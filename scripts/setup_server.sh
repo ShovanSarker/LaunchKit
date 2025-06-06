@@ -570,7 +570,6 @@ create_docker_compose() {
     # Create docker-compose file
     cat > docker/docker-compose.yml << EOL
 services:
-  # API service
   api:
     build:
       context: ../api
@@ -578,20 +577,21 @@ services:
     container_name: ${PROJECT_SLUG}_api
     volumes:
       - ../api:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
     env_file:
       - .env
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
     depends_on:
-      - postgres
+      - db
       - redis
       - rabbitmq
     restart: unless-stopped
 
-  # Frontend service
   frontend:
     build:
       context: ../app
@@ -599,18 +599,21 @@ services:
     container_name: ${PROJECT_SLUG}_frontend
     volumes:
       - ../app:/app
+      - /app/node_modules
     env_file:
       - .env
+    environment:
+      - NODE_ENV=production
     depends_on:
       - api
     restart: unless-stopped
 
-  # Celery Worker
   worker:
     build:
       context: ../api
       dockerfile: Dockerfile
     container_name: ${PROJECT_SLUG}_worker
+    command: celery -A project worker -l INFO
     volumes:
       - ../api:/app
     env_file:
@@ -618,21 +621,20 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
     depends_on:
-      - postgres
+      - api
       - redis
       - rabbitmq
-    command: celery -A project worker --loglevel=info
     restart: unless-stopped
 
-  # Celery Beat Scheduler
   scheduler:
     build:
       context: ../api
       dockerfile: Dockerfile
     container_name: ${PROJECT_SLUG}_scheduler
+    command: celery -A project beat -l INFO
     volumes:
       - ../api:/app
     env_file:
@@ -640,80 +642,68 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=project.settings.production
       - DEBUG=False
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
     depends_on:
-      - postgres
+      - api
       - redis
       - rabbitmq
-    command: celery -A project beat --loglevel=info
     restart: unless-stopped
 
-  # Database service
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: ${PROJECT_SLUG}_postgres
+    container_name: ${PROJECT_SLUG}_db
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data/
     env_file:
       - .env
     environment:
       - POSTGRES_DB=\${POSTGRES_DB}
       - POSTGRES_USER=\${POSTGRES_USER}
       - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  # Redis for caching and Celery results backend
   redis:
     image: redis:7-alpine
     container_name: ${PROJECT_SLUG}_redis
     volumes:
-      - redisdata:/data
-    ports:
-      - "6379:6379"
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  # RabbitMQ for message broker
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: ${PROJECT_SLUG}_rabbitmq
-    env_file:
-      - .env
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     environment:
       - RABBITMQ_DEFAULT_USER=\${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=\${RABBITMQ_DEFAULT_PASS}
       - RABBITMQ_DEFAULT_VHOST=\${RABBITMQ_DEFAULT_VHOST}
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  # Nginx for reverse proxy
   nginx:
-    image: nginx:alpine
+    image: nginx:1.25-alpine
     container_name: ${PROJECT_SLUG}_nginx
     volumes:
-      - ../nginx/conf.d:/etc/nginx/conf.d
-      - ../nginx/ssl:/etc/nginx/ssl
-      - ../api/static:/app/static
-      - ../api/media:/app/media
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
     ports:
       - "80:80"
       - "443:443"
@@ -722,12 +712,11 @@ services:
       - frontend
     restart: unless-stopped
 
-  # Prometheus for monitoring
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.45.0
     container_name: ${PROJECT_SLUG}_prometheus
     volumes:
-      - ../monitoring/prometheus:/etc/prometheus
+      - ./prometheus:/etc/prometheus
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -738,26 +727,23 @@ services:
       - "9090:9090"
     restart: unless-stopped
 
-  # Grafana for visualization
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.0.3
     container_name: ${PROJECT_SLUG}_grafana
     volumes:
-      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning
       - grafana_data:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_USER=\${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=\${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "3000:3000"
+      - "3001:3000"
     depends_on:
       - prometheus
     restart: unless-stopped
 
-  # cAdvisor for container metrics
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
     container_name: ${PROJECT_SLUG}_cadvisor
     volumes:
       - /:/rootfs:ro
@@ -769,9 +755,8 @@ services:
       - "8080:8080"
     restart: unless-stopped
 
-  # Node Exporter for system metrics
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.6.1
     container_name: ${PROJECT_SLUG}_node-exporter
     volumes:
       - /proc:/host/proc:ro
@@ -786,10 +771,13 @@ services:
     restart: unless-stopped
 
 volumes:
-  pgdata:
-  redisdata:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
   prometheus_data:
   grafana_data:
+  static_volume:
+  media_volume:
 
 networks:
   default:
