@@ -84,6 +84,45 @@ setup_ssl() {
     fi
 }
 
+# Function to check required files
+check_required_files() {
+    print_message "Checking required files..."
+    
+    # Check for docker-entrypoint.sh
+    if [ ! -f "api/docker-entrypoint.sh" ]; then
+        print_error "Docker entrypoint script not found at api/docker-entrypoint.sh"
+        print_message "Creating docker entrypoint script..."
+        
+        # Create entrypoint script
+        cat > api/docker-entrypoint.sh << EOL
+#!/bin/bash
+set -e
+
+# Wait for database to be ready
+echo "Waiting for database..."
+while ! nc -z \$POSTGRES_HOST \$POSTGRES_PORT; do
+  sleep 0.1
+done
+echo "Database is ready!"
+
+# Run migrations
+echo "Running migrations..."
+python manage.py migrate
+
+# Collect static files
+echo "Collecting static files..."
+python manage.py collectstatic --noinput
+
+# Execute the command passed to docker run
+exec "\$@"
+EOL
+        
+        # Make the script executable
+        chmod +x api/docker-entrypoint.sh
+        print_message "Docker entrypoint script created successfully"
+    fi
+}
+
 # Main function
 main() {
     print_message "Starting production deployment..."
@@ -96,6 +135,9 @@ main() {
     
     # Check requirements
     check_requirements
+    
+    # Check required files
+    check_required_files
     
     # Setup SSL if enabled
     setup_ssl

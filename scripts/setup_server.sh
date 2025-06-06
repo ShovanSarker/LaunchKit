@@ -799,6 +799,40 @@ EOL
     print_message "Docker Compose file created successfully"
 }
 
+# Function to create docker entrypoint script
+create_docker_entrypoint() {
+    print_message "Creating Docker entrypoint script..."
+    
+    # Create entrypoint script
+    cat > api/docker-entrypoint.sh << EOL
+#!/bin/bash
+set -e
+
+# Wait for database to be ready
+echo "Waiting for database..."
+while ! nc -z \$POSTGRES_HOST \$POSTGRES_PORT; do
+  sleep 0.1
+done
+echo "Database is ready!"
+
+# Run migrations
+echo "Running migrations..."
+python manage.py migrate
+
+# Collect static files
+echo "Collecting static files..."
+python manage.py collectstatic --noinput
+
+# Execute the command passed to docker run
+exec "\$@"
+EOL
+
+    # Make the script executable
+    chmod +x api/docker-entrypoint.sh
+    
+    print_message "Docker entrypoint script created successfully"
+}
+
 # Function to setup database
 setup_database() {
     print_message "Setting up database..."
@@ -815,6 +849,9 @@ setup_database() {
     
     # Create docker directory and docker-compose file
     create_docker_compose
+    
+    # Create docker entrypoint script
+    create_docker_entrypoint
     
     # Create required directories
     mkdir -p nginx/conf.d nginx/ssl
