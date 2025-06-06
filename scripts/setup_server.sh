@@ -560,6 +560,31 @@ EOL
     print_message "Additional security measures setup completed"
 }
 
+# Function to create frontend environment file
+create_frontend_env() {
+    print_message "Creating frontend environment file..."
+    
+    # Create .env file for frontend
+    cat > app/.env << EOL
+# API settings
+NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
+NEXT_PUBLIC_APP_URL=https://${DOMAIN}
+
+# Authentication
+NEXTAUTH_URL=https://${DOMAIN}
+NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+
+# Other third-party services
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID:-}
+EOL
+
+    # Copy frontend .env to docker directory
+    cp app/.env docker/frontend.env
+    
+    print_message "Frontend environment file created successfully"
+}
+
 # Function to create docker-compose file
 create_docker_compose() {
     print_message "Creating Docker Compose file..."
@@ -599,19 +624,12 @@ services:
     build:
       context: ../app
       dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_API_URL=\${NEXT_PUBLIC_API_URL}
-        - NEXT_PUBLIC_APP_URL=\${NEXT_PUBLIC_APP_URL}
-        - NEXTAUTH_URL=\${NEXTAUTH_URL}
-        - NEXTAUTH_SECRET=\${NEXTAUTH_SECRET}
-        - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=\${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
-        - NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=\${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}
     container_name: ${PROJECT_SLUG}_frontend
     volumes:
       - ../app:/app
       - /app/node_modules
     env_file:
-      - .env
+      - frontend.env
     environment:
       - NODE_ENV=production
     depends_on:
@@ -973,7 +991,7 @@ EMAIL=${EMAIL}
 POSTGRES_DB=${PROJECT_SLUG}
 POSTGRES_USER=${PROJECT_SLUG}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_HOST=postgres
+POSTGRES_HOST=db
 POSTGRES_PORT=5432
 
 # Redis settings
@@ -990,6 +1008,14 @@ SENDGRID_API_KEY=${SENDGRID_API_KEY}
 SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
 SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME}
 DEFAULT_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+
+# Frontend settings
+NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
+NEXT_PUBLIC_APP_URL=https://${DOMAIN}
+NEXTAUTH_URL=https://${DOMAIN}
+NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID:-}
 EOL
     
     # Get storage provider
@@ -1015,20 +1041,8 @@ AWS_S3_STATIC_LOCATION=static
 AWS_S3_MEDIA_LOCATION=media
 EOL
     
-    # Create .env file for frontend
-    cat > app/.env << EOL
-# API settings
-NEXT_PUBLIC_API_URL=https://${DOMAIN}/api
-NEXT_PUBLIC_APP_URL=https://${DOMAIN}
-
-# Authentication
-NEXTAUTH_URL=https://${DOMAIN}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-
-# Other third-party services
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your-stripe-publishable-key
-NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=your-ga-id
-EOL
+    # Create frontend environment file
+    create_frontend_env
     
     # Install system dependencies
     install_system_dependencies
