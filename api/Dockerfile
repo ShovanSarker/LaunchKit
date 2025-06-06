@@ -12,6 +12,9 @@ RUN apt-get update \
         netcat-traditional \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
+
 # Copy requirements first for better caching
 COPY requirements/ /app/requirements/
 RUN pip install --no-cache-dir -r requirements/prod.txt

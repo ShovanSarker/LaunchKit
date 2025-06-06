@@ -30,7 +30,6 @@ django-celery-results==2.5.1
 
 # Production
 gunicorn==21.2.0
-whitenoise==6.5.0
 
 # Utilities
 Pillow==10.1.0
