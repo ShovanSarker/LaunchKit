@@ -320,11 +320,11 @@ EOL
     fi
 }
 
-# Function to setup monitoring
+# Function to setup monitoring configuration
 setup_monitoring() {
     print_message "Setting up monitoring..."
     
-    # Create Prometheus directory
+    # Create Prometheus directory and configuration
     mkdir -p prometheus
     
     # Create Prometheus configuration
@@ -332,33 +332,110 @@ setup_monitoring() {
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  scrape_timeout: 10s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - "rules/*.yml"
 
 scrape_configs:
-  - job_name: 'launchkit'
+  - job_name: 'prometheus'
     static_configs:
-      - targets: 
-        - 'api:8000'  # Django API
-        - 'frontend:3000'  # Next.js Frontend
-        - 'postgres:5432'  # PostgreSQL
-        - 'redis:6379'  # Redis
-        - 'rabbitmq:5672'  # RabbitMQ
-        - 'rabbitmq:15672' # RabbitMQ Management
-    metrics_path: '/metrics'
-    scheme: 'http'
+      - targets: ['localhost:9090']
 
-  - job_name: 'node_exporter'
+  - job_name: 'api'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['api:8000']
+
+  - job_name: 'node'
     static_configs:
       - targets: ['node-exporter:9100']
 
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['cadvisor:8080']
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:9113']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
 EOL
+
+    # Create Grafana provisioning directory
+    mkdir -p grafana/provisioning/{datasources,dashboards}
     
+    # Create Grafana datasource configuration
+    cat > grafana/provisioning/datasources/prometheus.yml << EOL
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+EOL
+
     print_message "Monitoring setup completed"
-    print_message "Prometheus will be available at: http://localhost:9090"
-    print_message "Grafana will be available at: http://localhost:3000"
-    print_message "cAdvisor metrics will be available at: http://localhost:8080"
+}
+
+# Function to setup health checks
+setup_health_checks() {
+    print_message "Setting up health check endpoints..."
+    
+    # Create Django health check endpoint
+    mkdir -p api/apps/core/urls
+    
+    # Create health check URLs
+    cat > api/apps/core/urls/health.py << EOL
+from django.urls import path
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({"status": "healthy"})
+
+urlpatterns = [
+    path('', health_check, name='health_check'),
+]
+EOL
+
+    # Create Next.js health check endpoint
+    mkdir -p app/src/pages/api
+    
+    # Create health check API route
+    cat > app/src/pages/api/health.ts << EOL
+import type { NextApiRequest, NextApiResponse } from 'next'
+
+type HealthResponse = {
+  status: string
+}
+
+export default function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<HealthResponse>
+) {
+  res.status(200).json({ status: 'healthy' })
+}
+EOL
+
+    print_message "Health check endpoints created successfully"
 }
 
 # Function to setup auto-deployment
@@ -599,7 +676,7 @@ services:
     build:
       context: ../api
       dockerfile: Dockerfile
-    container_name: ${PROJECT_SLUG}_api
+    container_name: \${PROJECT_SLUG}_api
     volumes:
       - ../api:/app
       - static_volume:/app/staticfiles
@@ -618,13 +695,19 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
 
   frontend:
     build:
       context: ../app
       dockerfile: Dockerfile
-    container_name: ${PROJECT_SLUG}_frontend
+    container_name: \${PROJECT_SLUG}_frontend
     volumes:
       - ../app:/app
       - /app/node_modules
@@ -633,14 +716,21 @@ services:
     environment:
       - NODE_ENV=production
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
 
   worker:
     build:
       context: ../api
       dockerfile: Dockerfile
-    container_name: ${PROJECT_SLUG}_worker
+    container_name: \${PROJECT_SLUG}_worker
     command: celery -A project worker -l INFO
     volumes:
       - ../api:/app
@@ -653,7 +743,7 @@ services:
       - POSTGRES_PORT=5432
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -664,7 +754,7 @@ services:
     build:
       context: ../api
       dockerfile: Dockerfile
-    container_name: ${PROJECT_SLUG}_scheduler
+    container_name: \${PROJECT_SLUG}_scheduler
     command: celery -A project beat -l INFO
     volumes:
       - ../api:/app
@@ -677,7 +767,7 @@ services:
       - POSTGRES_PORT=5432
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -686,7 +776,7 @@ services:
 
   db:
     image: postgres:15-alpine
-    container_name: ${PROJECT_SLUG}_db
+    container_name: \${PROJECT_SLUG}_db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     env_file:
@@ -704,7 +794,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: ${PROJECT_SLUG}_redis
+    container_name: \${PROJECT_SLUG}_redis
     volumes:
       - redis_data:/data
     healthcheck:
@@ -716,7 +806,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: ${PROJECT_SLUG}_rabbitmq
+    container_name: \${PROJECT_SLUG}_rabbitmq
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     environment:
@@ -732,25 +822,31 @@ services:
 
   nginx:
     image: nginx:1.25-alpine
-    container_name: ${PROJECT_SLUG}_nginx
+    container_name: \${PROJECT_SLUG}_nginx
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl:/etc/nginx/ssl
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
     ports:
       - "80:80"
       - "443:443"
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       frontend:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v2.45.0
-    container_name: ${PROJECT_SLUG}_prometheus
+    container_name: \${PROJECT_SLUG}_prometheus
     volumes:
       - ./prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -759,28 +855,44 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
     ports:
       - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   grafana:
     image: grafana/grafana:10.0.3
-    container_name: ${PROJECT_SLUG}_grafana
+    container_name: \${PROJECT_SLUG}_grafana
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     environment:
       - GF_SECURITY_ADMIN_USER=\${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=\${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=monitor.\${DOMAIN}
+      - GF_SERVER_ROOT_URL=https://monitor.\${DOMAIN}
     ports:
       - "3001:3000"
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.0
-    container_name: ${PROJECT_SLUG}_cadvisor
+    container_name: \${PROJECT_SLUG}_cadvisor
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -789,11 +901,16 @@ services:
       - /dev/disk/:/dev/disk:ro
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   node-exporter:
     image: prom/node-exporter:v1.6.1
-    container_name: ${PROJECT_SLUG}_node-exporter
+    container_name: \${PROJECT_SLUG}_node-exporter
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -804,6 +921,11 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     ports:
       - "9100:9100"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
 volumes:
@@ -817,7 +939,7 @@ volumes:
 
 networks:
   default:
-    name: ${PROJECT_SLUG}_network
+    name: \${PROJECT_SLUG}_network
 EOL
 
     print_message "Docker Compose file created successfully"
@@ -1056,7 +1178,10 @@ EOL
     # Setup Nginx
     setup_nginx
     
-    # Setup monitoring
+    # Setup health checks
+    setup_health_checks
+    
+    # Setup monitoring with improved configuration
     setup_monitoring
     
     # Setup backup service
