@@ -6,6 +6,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Default project settings
+DEFAULT_PROJECT_NAME="LaunchKit"
+DEFAULT_PROJECT_SLUG="launchkit"
+
 # Function to print messages
 print_message() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -27,6 +31,30 @@ get_input() {
     
     read -p "$prompt [$default]: " input
     echo "${input:-$default}"
+}
+
+# Function to initialize project settings
+initialize_project_settings() {
+    print_message "Initializing project settings..."
+    
+    # Get project name and slug
+    PROJECT_NAME=$(get_input "Enter project name" "$DEFAULT_PROJECT_NAME")
+    PROJECT_SLUG=$(get_input "Enter project slug (lowercase, no spaces)" "$DEFAULT_PROJECT_SLUG")
+    
+    # Export variables for Docker and other processes
+    export PROJECT_NAME
+    export PROJECT_SLUG
+    
+    # Create or update the environment file
+    cat > .env << EOL
+# Project Settings
+PROJECT_NAME=${PROJECT_NAME}
+PROJECT_SLUG=${PROJECT_SLUG}
+EOL
+    
+    print_message "Project settings initialized:"
+    print_message "Project Name: ${PROJECT_NAME}"
+    print_message "Project Slug: ${PROJECT_SLUG}"
 }
 
 # Function to generate random string
@@ -1071,7 +1099,6 @@ main() {
     # Get domain information
     DOMAIN=$(get_input "Enter your domain name" "example.com")
     EMAIL=$(get_input "Enter your email for Let's Encrypt" "admin@example.com")
-    PROJECT_SLUG=$(get_input "Enter project slug (e.g., launchkit)" "launchkit")
     
     # Ask about SSL configuration
     CONFIGURE_SSL=$(get_input "Do you want to configure SSL with Let's Encrypt? (yes/no)" "yes")

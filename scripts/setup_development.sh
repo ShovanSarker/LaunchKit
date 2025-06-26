@@ -67,7 +67,7 @@ append_or_create_file() {
   fi
 }
 
-# Get project info
+# Function to get project info
 get_project_info() {
   print_message "Enter project information:"
   
@@ -81,6 +81,17 @@ get_project_info() {
   
   read -p "Enter project description: " PROJECT_DESCRIPTION
   PROJECT_DESCRIPTION=${PROJECT_DESCRIPTION:-"A full-stack boilerplate for modern web applications"}
+  
+  # Export variables for Docker and other processes
+  export PROJECT_NAME
+  export PROJECT_SLUG
+  
+  # Create or update root .env file with project settings
+  cat > "${PROJECT_ROOT}/.env" << EOL
+# Project Settings
+PROJECT_NAME=${PROJECT_NAME}
+PROJECT_SLUG=${PROJECT_SLUG}
+EOL
   
   print_message "Project name: ${PROJECT_NAME}"
   print_message "Project slug: ${PROJECT_SLUG}"
