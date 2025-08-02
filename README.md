@@ -5,11 +5,11 @@
 | |                          | |   | | / (_) |  
 | |     __ _ _   _ _ __   ___| |__ | |/ / _| |_ 
 | |    / _` | | | | '_ \ / __| '_ \|    \| | __|
-| |___| (_| | |_| | | | | (__| | | | |\  \ | |_ 
+| |___| (_| |_| |_| | | | (__| | | | |\  \ | |_ 
 \_____/\__,_|\__,_|_| |_|\___|_| |_\_| \_/_|\__| 
 ```
 
-Full‑stack Django + DRF + Celery + RabbitMQ + Redis + Next.js boilerplate. Everything ships in a single repository, one‑command deploy with Docker Compose.
+Full‑stack Django + DRF + Celery + RabbitMQ + Redis + Next.js boilerplate. Everything ships in a single repository, with manual deployment scripts for granular control.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Django](https://img.shields.io/badge/Django-4.2-green.svg)](https://www.djangoproject.com/)
@@ -23,6 +23,7 @@ Full‑stack Django + DRF + Celery + RabbitMQ + Redis + Next.js boilerplate. Eve
 
 - [Development Guide](docs/DEVELOPMENT.md) - Setup and development workflow
 - [Production Guide](docs/PRODUCTION.md) - Deployment and production setup
+- [Manual Setup Guide](run/SETUP_GUIDE.md) - Manual deployment with individual scripts
 - [API Handling Guide](API_HANDLING_GUIDE.md) - API development guidelines
 - [Celery Setup Guide](celery-setup.md) - Background task configuration
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute to LaunchKit
@@ -69,197 +70,284 @@ Full‑stack Django + DRF + Celery + RabbitMQ + Redis + Next.js boilerplate. Eve
    cd YOUR_REPO_NAME
    ```
 
-### Initial Setup
+## Quick Start
 
-1. **Setup Development Environment**
+### Development Environment
+
+1. **Initial Setup**
    ```bash
    # Run the setup script
    ./scripts/setup_development.sh
    ```
-   This script will:
-   - Create necessary environment files
-   - Generate the `run_dev.sh` script in the scripts directory
-   - Set up initial configurations
-   - Make scripts executable
 
-2. **Start Development Environment**
+2. **Start All Services**
    ```bash
-   # Start all services
-   ./scripts/run_dev.sh
+   # Start backend, database, Redis, RabbitMQ
+   ./run/development/run_dev_all.sh
    ```
 
-3. **Access the Application**
+3. **Start Frontend**
+   ```bash
+   # Start Next.js development server
+   cd app && npm run dev
+   ```
+
+4. **Access the Application**
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
-   - API Documentation: http://localhost:8000/api/schema/swagger-ui/
+   - API Documentation: http://localhost:8000/api/docs/
    - Admin Interface: http://localhost:8000/admin
 
-### Customization
+### Production Environment
 
-1. **Update Project Name**
-   - Edit `api/project/settings.py`
-   - Update `app/package.json`
-   - Modify Docker configurations
-
-2. **Configure Environment**
-   - Update `.env` file with your settings
-   - Configure database settings
-   - Set up authentication keys
-
-3. **Add Your Features**
-   - Create new Django apps in `api/apps/`
-   - Add new Next.js pages in `app/pages/`
-   - Update API endpoints in `api/apps/`
-
-### Development Workflow
-
-1. **Create Feature Branch**
+1. **Server Setup**
    ```bash
-   git checkout -b feature/your-feature-name
+   # Run the production setup script
+   ./scripts/setup_server.sh
    ```
 
-2. **Make Changes**
-   - Write code
-   - Add tests
-   - Update documentation
-
-3. **Commit Changes**
+2. **Start All Services**
    ```bash
-   git add .
-   git commit -m "Add your feature"
+   # Start all production services
+   ./run/production/run_prod_all.sh
    ```
 
-4. **Push Changes**
+3. **Post-Deployment Tasks**
    ```bash
-   git push origin feature/your-feature-name
+   # Run migrations
+   ./run/production/run_backend.sh migrate
+   
+   # Create superuser
+   ./run/production/run_backend.sh createsuperuser
    ```
 
-5. **Create Pull Request**
-   - Go to your fork on GitHub
-   - Click "New Pull Request"
-   - Select your feature branch
-   - Fill in the PR template
+## Manual Service Management
 
-## Features
+### Development Services
 
-- **Django Backend**: Fully configured Django API with REST framework
-- **Containerized**: Complete Docker setup for both development and production
-- **Authentication**: User authentication with JWT tokens and advanced security features
-- **Background Processing**: Celery task queue with Redis and RabbitMQ
-- **Database**: PostgreSQL with migrations management
-- **Dev Workflow**: Streamlined development environment with helpful scripts
-- **Monitoring**: Prometheus and Grafana setup for production monitoring
-- **Deployment Ready**: Configuration for easy deployment to production
-- **Next.js 14.1.0 frontend with TypeScript and Tailwind CSS**
-- **Auto-deployment system**
+```bash
+# Individual service control
+./run/development/run_backend.sh [start|stop|restart|status|logs]
+./run/development/run_worker.sh [start|stop|restart|status|logs]
+./run/development/run_scheduler.sh [start|stop|restart|status|logs]
+./run/development/run_redis.sh [start|stop|restart|status|logs|cli]
+./run/development/run_rabbitmq.sh [start|stop|restart|status|logs|ui]
+
+# All services at once
+./run/development/run_dev_all.sh [start|stop|restart|status|logs]
+```
+
+### Production Services
+
+```bash
+# Individual service control
+./run/production/run_backend.sh [start|stop|restart|status|logs|migrate|collectstatic|createsuperuser]
+./run/production/run_frontend.sh [start|stop|restart|status|logs|build]
+./run/production/run_nginx.sh [start|stop|restart|status|logs|test|reload]
+./run/production/run_monitoring.sh [start|stop|restart|status|logs|grafana|prometheus]
+
+# All services at once
+./run/production/run_prod_all.sh [start|stop|restart|status|logs|health]
+```
 
 ## Architecture
 
-LaunchKit uses a modern architecture consisting of:
-
-- **Backend**: Django API with Django REST Framework
-- **Database**: PostgreSQL for reliable data storage
-- **Caching**: Redis for fast caching and session storage
-- **Message Broker**: RabbitMQ for reliable message queueing
-- **Task Processing**: Celery for background task processing
-- **Frontend**: Next.js with TypeScript and Tailwind CSS
-- **Reverse Proxy**: Nginx for production deployments
-- **Monitoring**: Prometheus and Grafana for system monitoring
-
-### Architecture Diagram
-
 ```
-                                    ┌────────────┐   HTTPS   ┌────────────┐
-                      Internet ────▶│   Nginx    │──────────▶│ Frontend   │ 
-                                    │(reverse    │           │(Next.js)   │
-                                    │ proxy)     │           └────────────┘
-                                    └────────────┘    
-                                          │
-                                          │ /api
-                                          ▼                             
-┌────────────┐           ┌────────────┐   │      ┌────────────┐ AMQP  ┌────────────┐
-│ Prometheus │◀──────────│ Django API │◀──┘      │ RabbitMQ   │◀─────▶│ Celery     │
-│ Monitoring │           └────────────┘          │ Message    │       │ Worker     │
-└────────────┘                  │                │ Broker     │       └────────────┘
-      ▲                         │                │            │
-      │                         │                └────────────┘             │
-      │                         ▼                                           │
-      │                 ┌────────────┐          ┌────────────┐              │
-      └─────────────────│ PostgreSQL │◀─────────│ Redis      │◀─────────────┘
-                        │ Database   │          │ Cache      │
-                        └────────────┘          └────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │   Backend       │    │   Database      │
+│   (Next.js)     │◄──►│   (Django/DRF)  │◄──►│   (PostgreSQL)  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Nginx         │    │   Celery        │    │   Redis         │
+│   (Reverse      │    │   (Background   │    │   (Cache/       │
+│    Proxy)       │    │    Tasks)       │    │    Sessions)    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Monitoring    │    │   RabbitMQ      │    │   Object        │
+│   (Prometheus   │    │   (Message      │    │   Storage       │
+│    + Grafana)   │    │    Broker)      │    │   (S3/Spaces)   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Prerequisites
+## Features
 
-Before getting started, ensure you have the following installed:
+### Backend (Django + DRF)
+- **Authentication**: JWT-based authentication with refresh tokens
+- **Email System**: Django Email Admin with email logging and preview
+- **API Documentation**: Auto-generated Swagger/OpenAPI documentation
+- **Background Tasks**: Celery with RabbitMQ for async task processing
+- **Caching**: Redis for session storage and caching
+- **Database**: PostgreSQL with Django ORM
+- **Admin Interface**: Customizable Django admin with email preview
 
-- [Docker](https://www.docker.com/get-started) (v20.10+)
-- [Docker Compose](https://docs.docker.com/compose/install/) (v2.0+)
-- [Git](https://git-scm.com/downloads)
+### Frontend (Next.js)
+- **Modern UI**: Built with Next.js 14, TypeScript, and Tailwind CSS
+- **Authentication**: JWT-based authentication with automatic token refresh
+- **Responsive Design**: Mobile-first responsive design
+- **Type Safety**: Full TypeScript support
+- **API Integration**: Axios-based API client with interceptors
 
-## File Structure
+### Infrastructure
+- **Containerization**: Docker and Docker Compose for easy deployment
+- **Reverse Proxy**: Nginx with SSL termination and load balancing
+- **Monitoring**: Prometheus and Grafana for metrics and alerting
+- **Security**: UFW firewall, Fail2ban, and security headers
+- **SSL**: Automatic SSL certificate management with Let's Encrypt
+- **Backup**: Automated database and file backups
 
+### Development Tools
+- **Hot Reload**: Fast development with hot reloading
+- **Type Checking**: TypeScript and Python type checking
+- **Linting**: ESLint and Prettier for code quality
+- **Testing**: Jest and Django testing frameworks
+- **Debugging**: Comprehensive logging and debugging tools
+
+## Environment Setup
+
+### Development Environment Files
+
+Copy and configure these template files:
+
+```bash
+# API Environment
+cp templates/env/development/api.env.template api/.env
+# Edit api/.env with your values
+
+# Frontend Environment  
+cp templates/env/development/app.env.template app/.env.local
+# Edit app/.env.local with your values
+
+# Docker Environment
+cp templates/env/development/docker.env.template docker/.env
+# Edit docker/.env with your values
 ```
-launchkit/
-├── api/                      # Django backend
-│   ├── apps/                 # Django applications
-│   ├── project/              # Project settings
-│   ├── requirements/         # Python requirements
-│   ├── templates/            # Django templates
-│   └── manage.py             # Django management script
-├── app/                      # Next.js frontend
-├── docker/                   # Docker configuration
-│   ├── api/                  # API container configuration
-│   ├── nginx/                # Nginx configuration
-│   ├── postgres/             # PostgreSQL configuration
-│   └── ...                   # Other services
-├── scripts/                  # Helper scripts
-│   ├── setup_development.sh  # Development environment setup
-│   ├── run_dev.sh            # Development environment management
-│   └── ...                   # Other scripts
-├── templates/                # Configuration templates
-│   └── env/                  # Environment templates
-├── docs/                     # Documentation
-│   ├── DEVELOPMENT.md        # Development guide
-│   └── PRODUCTION.md         # Production guide
-├── .github/                  # GitHub configuration
-│   ├── ISSUE_TEMPLATE/       # Issue templates
-│   │   ├── bug_report.md
-│   │   └── feature_request.md
-│   └── PULL_REQUEST_TEMPLATE.md
-├── CHANGELOG.md              # Project changelog
-├── CODE_OF_CONDUCT.md        # Community guidelines
-├── CONTRIBUTING.md           # Contribution guidelines
-├── LICENSE                   # MIT License
-├── .env                      # Environment variables (generated)
-├── docker-compose.yml        # Docker Compose configuration
-└── README.md                 # This file
+
+### Production Environment Files
+
+```bash
+# API Environment
+cp templates/env/production/api.env.template api/.env
+# Edit api/.env with your production values
+
+# Frontend Environment
+cp templates/env/production/app.env.template app/.env.local
+# Edit app/.env.local with your production values
+
+# Docker Environment
+cp templates/env/production/docker.env.template docker/.env
+# Edit docker/.env with your production values
 ```
 
-## Documentation
+## Service URLs
 
-- [Development Guide](docs/DEVELOPMENT.md) - Detailed instructions for setting up and running the development environment
-- [Production Guide](docs/PRODUCTION.md) - Comprehensive guide for deploying to production
-- [API Handling Guide](API_HANDLING_GUIDE.md) - Guidelines for API development
-- [Celery Setup Guide](celery-setup.md) - Configuration for background tasks
-- [Contributing Guide](CONTRIBUTING.md) - How to contribute to the project
-- [Code of Conduct](CODE_OF_CONDUCT.md) - Community guidelines
-- [Changelog](CHANGELOG.md) - Project version history
+### Development
+- **API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/api/docs/
+- **Frontend**: http://localhost:3000
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
+- **RabbitMQ**: localhost:5672
+- **RabbitMQ UI**: http://localhost:15672
+
+### Production
+- **Main Site**: https://your-domain.com
+- **API**: https://api.your-domain.com
+- **API Docs**: https://api.your-domain.com/api/docs/
+- **Monitoring**: https://monitor.your-domain.com
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
+- **RabbitMQ**: localhost:5672
+- **RabbitMQ UI**: http://localhost:15672
+- **Prometheus**: http://localhost:9090
+- **cAdvisor**: http://localhost:8080
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Docker not running**:
+   ```bash
+   # macOS
+   open -a Docker
+   
+   # Linux
+   sudo systemctl start docker
+   ```
+
+2. **Environment files missing**:
+   ```bash
+   # Development
+   ./scripts/setup_development.sh
+   
+   # Production
+   ./scripts/setup_server.sh
+   ```
+
+3. **Port conflicts**:
+   ```bash
+   # Check what's using the port
+   lsof -i :8000
+   
+   # Kill process if needed
+   kill -9 <PID>
+   ```
+
+### Debugging Commands
+
+```bash
+# Check service status
+./run/development/run_backend.sh status
+
+# View service logs
+./run/development/run_backend.sh logs
+
+# Check Docker containers
+docker ps
+docker logs <container_name>
+
+# Health check (production)
+./run/production/run_prod_all.sh health
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to:
+
+- Report bugs
+- Suggest new features
+- Submit pull requests
+- Follow our coding standards
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- **Documentation**: Check `README.md` and `docs/` directory
+- **Issues**: Create an issue on GitHub
+- **Discussions**: Join our community discussions
+- **Email**: Contact us at support@launchkit.dev
 
 ## Acknowledgments
 
-- [Django](https://www.djangoproject.com/)
-- [Docker](https://www.docker.com/)
-- [PostgreSQL](https://www.postgresql.org/)
-- [Redis](https://redis.io/)
-- [RabbitMQ](https://www.rabbitmq.com/)
-- [Celery](https://docs.celeryq.dev/)
-- [Nginx](https://nginx.org/)
-- [Prometheus](https://prometheus.io/)
-- [Next.js](https://nextjs.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
+- **Django**: The web framework for perfectionists with deadlines
+- **Next.js**: The React framework for production
+- **Docker**: Containerization platform
+- **Celery**: Distributed task queue
+- **PostgreSQL**: Advanced open source database
+- **Redis**: In-memory data structure store
+- **RabbitMQ**: Message broker
+- **Nginx**: Web server and reverse proxy
+- **Prometheus**: Monitoring system and time series database
+- **Grafana**: Analytics and monitoring solution
 
 ---
 
-Created with ❤️ by Shovan 
+**Built with ❤️ by Shovan Sarker** 
