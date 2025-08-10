@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide will help you set up and run the LaunchKit development environment.
+This guide covers setting up and running LaunchKit in a development environment using the manual deployment approach.
 
 ## Prerequisites
 
@@ -8,224 +8,322 @@ Before getting started, ensure you have the following installed:
 
 - [Docker](https://www.docker.com/get-started) (v20.10+)
 - [Docker Compose](https://docs.docker.com/compose/install/) (v2.0+)
+- [Node.js](https://nodejs.org/) (v18+)
 - [Git](https://git-scm.com/downloads)
 
-## Getting Started
+## Quick Start
 
-### Clone the Repository
+### 1. Initial Setup
 
-```bash
-git clone https://github.com/ShovanSarker/LaunchKit.git
-cd LaunchKit
-```
-
-### Setup Development Environment
+Run the development setup script to create environment templates:
 
 ```bash
-# Run the setup script
 ./scripts/setup_development.sh
 ```
 
 This script will:
-1. Create necessary environment files
-2. Generate the `run_dev.sh` script in the scripts directory
-3. Set up initial configurations
-4. Make scripts executable
+- Create environment templates in `templates/env/development/`
+- Set up the run scripts directory structure
+- Configure project settings
 
-### Start the Development Environment
+### 2. Configure Environment Files
+
+Copy and configure the environment templates:
 
 ```bash
-# Start all services using the generated script
-./scripts/run_dev.sh
+# API Environment
+cp templates/env/development/api.env.template api/.env
+# Edit api/.env with your values
+
+# Frontend Environment  
+cp templates/env/development/app.env.template app/.env.local
+# Edit app/.env.local with your values
+
+# Docker Environment
+cp templates/env/development/docker.env.template docker/.env
+# Edit docker/.env with your values
 ```
 
-This will start the following services:
-- PostgreSQL database
-- Redis cache
-- RabbitMQ message broker
-- Django API server
-- Celery worker
-- Celery scheduler (beat)
+### 3. Start Development Services
 
-### Access the Application
+Start the backend services using the manual scripts:
 
-- Django API: [http://localhost:8000](http://localhost:8000)
-- Django Admin: [http://localhost:8000/admin](http://localhost:8000/admin)
-- API Documentation: [http://localhost:8000/api/schema/swagger-ui/](http://localhost:8000/api/schema/swagger-ui/)
-- RabbitMQ Management: [http://localhost:15672](http://localhost:15672)
+```bash
+# Start all development services (backend, database, Redis, RabbitMQ)
+./run/development/run_dev_all.sh
+```
+
+### 4. Start Frontend
+
+Start the Next.js development server:
+
+```bash
+cd app && npm run dev
+```
+
+### 5. Access Your Application
+
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/api/docs/
+- **Admin Interface**: http://localhost:8000/admin
+
+## Manual Service Management
+
+### Individual Service Control
+
+You can start, stop, and manage individual services:
+
+```bash
+# Backend API
+./run/development/run_backend.sh [start|stop|restart|status|logs]
+
+# Celery Worker
+./run/development/run_worker.sh [start|stop|restart|status|logs]
+
+# Celery Scheduler
+./run/development/run_scheduler.sh [start|stop|restart|status|logs]
+
+# Redis
+./run/development/run_redis.sh [start|stop|restart|status|logs|cli]
+
+# RabbitMQ
+./run/development/run_rabbitmq.sh [start|stop|restart|status|logs|ui]
+```
+
+### All Services at Once
+
+```bash
+# Start all services
+./run/development/run_dev_all.sh
+
+# Stop all services
+./run/development/run_dev_all.sh stop
+
+# Restart all services
+./run/development/run_dev_all.sh restart
+
+# View logs for all services
+./run/development/run_dev_all.sh logs
+```
 
 ## Development Workflow
 
-### Available Commands
+### Daily Development
 
-#### Main Commands
+1. **Start services**:
+   ```bash
+   ./run/development/run_dev_all.sh
+   ```
 
-| Command | Description |
-|---------|-------------|
-| `./scripts/run_dev.sh` | Start development environment |
-| `./scripts/run_dev.sh down` | Stop development environment |
-| `./scripts/run_dev.sh ps` | List running services |
-| `./scripts/run_dev.sh logs [service]` | Show logs for specific or all services |
+2. **Start frontend**:
+   ```bash
+   cd app && npm run dev
+   ```
 
-#### Database Commands
+3. **Make changes** to your code
 
-| Command | Description |
-|---------|-------------|
-| `./scripts/run_dev.sh migrate` | Apply database migrations |
-| `./scripts/run_dev.sh makemigrations` | Create new migrations |
-| `./scripts/run_dev.sh createsuperuser` | Create admin user |
+4. **View logs** if needed:
+   ```bash
+   ./run/development/run_backend.sh logs
+   ```
 
-#### Celery Commands
-
-| Command | Description |
-|---------|-------------|
-| `./scripts/run_dev.sh celery` | Start Celery worker |
-| `./scripts/run_dev.sh beat` | Start Celery beat |
-
-### Development to Production Workflow
-
-1. **Development**: Use `./scripts/run_dev.sh` for local development
-2. **Testing**: Run tests and ensure code quality
-3. **Staging**: Deploy to staging environment
-4. **Production**: Deploy to production environment
-
-## Common Issues and Troubleshooting
-
-### Setup Issues
-
-If you encounter issues during setup:
+### Database Operations
 
 ```bash
-# Check if setup script exists
-ls -l scripts/setup_development.sh
+# Run migrations
+docker exec -it launchkit_api python manage.py migrate
 
-# Make sure it's executable
-chmod +x scripts/setup_development.sh
+# Create superuser
+docker exec -it launchkit_api python manage.py createsuperuser
 
-# Run setup again
-./scripts/setup_development.sh
+# Django shell
+docker exec -it launchkit_api python manage.py shell
+
+# Reset database
+docker exec -it launchkit_api python manage.py flush
 ```
 
-### Database Connection Issues
-
-If you can't connect to the database:
+### Code Quality
 
 ```bash
-# Check if PostgreSQL is running
-./scripts/run_dev.sh ps
+# Format Python code
+cd api && black .
+cd api && isort .
 
-# Check PostgreSQL logs
-./scripts/run_dev.sh logs db
+# Format JavaScript/TypeScript code
+cd app && npm run format
 
-# Restart the database
-./scripts/run_dev.sh restart db
+# Run tests
+cd api && python manage.py test
+cd app && npm test
 ```
 
-### Redis Connection Issues
+## Environment Configuration
 
-If Redis connection fails:
+### API Environment (`api/.env`)
+
+Key settings to configure:
 
 ```bash
-# Check Redis status
-./scripts/run_dev.sh ps redis
+# Project Settings
+PROJECT_NAME=YourProjectName
+PROJECT_SLUG=yourproject
 
-# Check Redis logs
-./scripts/run_dev.sh logs redis
-
-# Restart Redis
-./scripts/run_dev.sh restart redis
-```
-
-### RabbitMQ Issues
-
-If RabbitMQ is not working:
-
-```bash
-# Check RabbitMQ status
-./scripts/run_dev.sh ps rabbitmq
-
-# Check RabbitMQ logs
-./scripts/run_dev.sh logs rabbitmq
-
-# Restart RabbitMQ
-./scripts/run_dev.sh restart rabbitmq
-```
-
-### Celery Issues
-
-If Celery tasks are not processing:
-
-```bash
-# Check Celery worker status
-./scripts/run_dev.sh ps celery
-
-# Check Celery logs
-./scripts/run_dev.sh logs celery
-
-# Restart Celery
-./scripts/run_dev.sh restart celery
-```
-
-## Environment Variables
-
-The setup script will create a `.env` file with the following variables:
-
-```env
-# Django settings
+# Django Settings
+DJANGO_ENV=development
 DEBUG=True
-SECRET_KEY=your-secret-key-here
-ALLOWED_HOSTS=localhost,127.0.0.1
+DJANGO_SECRET_KEY=your-secret-key-here
 
-# Database settings
-POSTGRES_DB=launchkit
-POSTGRES_USER=launchkit
-POSTGRES_PASSWORD=your-password-here
+# Database
+POSTGRES_DB=yourproject
+POSTGRES_USER=yourproject
+POSTGRES_PASSWORD=your-db-password
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
 
-# Redis settings
+# Redis
 REDIS_URL=redis://redis:6379/0
 
-# RabbitMQ settings
-RABBITMQ_DEFAULT_USER=launchkit
-RABBITMQ_DEFAULT_PASS=your-password-here
+# RabbitMQ
+CELERY_BROKER_URL=amqp://yourproject:password@rabbitmq:5672/yourproject
+
+# Frontend URL
+FRONTEND_URL=http://localhost:3000
 ```
 
-## Development Best Practices
+### Frontend Environment (`app/.env.local`)
 
-1. **Code Style**
-   - Follow PEP 8 for Python code
-   - Use ESLint and Prettier for JavaScript/TypeScript
-   - Write meaningful commit messages
+Key settings to configure:
 
-2. **Testing**
-   - Write unit tests for new features
-   - Run tests before committing
-   - Maintain test coverage
+```bash
+# Project Information
+NEXT_PUBLIC_PROJECT_NAME=YourProjectName
+NEXT_PUBLIC_PROJECT_SLUG=yourproject
 
-3. **Documentation**
-   - Document new features
-   - Update API documentation
-   - Keep README up to date
+# API Settings
+NEXT_PUBLIC_API_URL=http://localhost:8000
 
-4. **Version Control**
-   - Use feature branches
-   - Keep commits atomic
-   - Review code before merging
+# Authentication
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-nextauth-secret
 
-5. **Security**
-   - Never commit sensitive data
-   - Use environment variables
-   - Follow security best practices
+# Feature Flags
+NEXT_PUBLIC_FEATURE_REGISTRATION_ENABLED=true
+NEXT_PUBLIC_FEATURE_SOCIAL_LOGIN_ENABLED=false
+```
 
-## Contributing
+### Docker Environment (`docker/.env`)
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
+Key settings to configure:
 
-## Need Help?
+```bash
+# Project Settings
+PROJECT_NAME=YourProjectName
+PROJECT_SLUG=yourproject
 
-- Check the [troubleshooting guide](#common-issues-and-troubleshooting)
-- Open an issue on GitHub
-- Contact the maintainers 
+# Database
+POSTGRES_DB=yourproject
+POSTGRES_USER=yourproject
+POSTGRES_PASSWORD=your-db-password
+
+# RabbitMQ
+RABBITMQ_DEFAULT_USER=yourproject
+RABBITMQ_DEFAULT_PASS=your-rabbitmq-password
+RABBITMQ_DEFAULT_VHOST=yourproject
+```
+
+## Service URLs
+
+### Development Services
+
+- **API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/api/docs/
+- **Frontend**: http://localhost:3000
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
+- **RabbitMQ**: localhost:5672
+- **RabbitMQ UI**: http://localhost:15672
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Docker not running**:
+   ```bash
+   # macOS
+   open -a Docker
+   
+   # Linux
+   sudo systemctl start docker
+   ```
+
+2. **Port conflicts**:
+   ```bash
+   # Check what's using the port
+   lsof -i :8000
+   
+   # Kill process if needed
+   kill -9 <PID>
+   ```
+
+3. **Service dependencies**:
+   ```bash
+   # Start dependencies first
+   ./run/development/run_redis.sh
+   ./run/development/run_rabbitmq.sh
+   ./run/development/run_backend.sh
+   ```
+
+### Debugging Commands
+
+```bash
+# Check service status
+./run/development/run_backend.sh status
+
+# View service logs
+./run/development/run_backend.sh logs
+
+# Check Docker containers
+docker ps
+docker logs <container_name>
+
+# Check Docker Compose
+cd docker && docker compose ps
+cd docker && docker compose logs -f
+```
+
+### Reset Development Environment
+
+If you need to reset your development environment:
+
+```bash
+# Stop all services
+./run/development/run_dev_all.sh stop
+
+# Remove containers and volumes
+cd docker && docker compose down -v
+
+# Rebuild containers
+cd docker && docker compose build --no-cache
+
+# Start services again
+./run/development/run_dev_all.sh
+```
+
+## Next Steps
+
+After setting up your development environment:
+
+1. **Explore the API**: Visit http://localhost:8000/api/docs/
+2. **Create a superuser**: `docker exec -it launchkit_api python manage.py createsuperuser`
+3. **Run migrations**: `docker exec -it launchkit_api python manage.py migrate`
+4. **Test authentication**: Create accounts and test login/logout
+5. **Add your features**: Start building your application
+
+## Additional Resources
+
+- [Production Guide](PRODUCTION.md) - Deploy to production
+- [Manual Setup Guide](../run/SETUP_GUIDE.md) - Detailed manual deployment guide
+- [API Handling Guide](../API_HANDLING_GUIDE.md) - API development guidelines
+- [Celery Setup Guide](../celery-setup.md) - Background task configuration 

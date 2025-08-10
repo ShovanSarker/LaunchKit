@@ -1,397 +1,484 @@
-# Production Deployment Guide
+# Production Guide
 
-This guide provides detailed instructions for deploying LaunchKit to production.
+This guide covers deploying LaunchKit to production using the manual deployment approach.
 
 ## Prerequisites
 
-- A production server (Ubuntu 20.04 LTS or later recommended)
-- Domain name with DNS access
-- SSL certificate (Let's Encrypt recommended)
-- Storage provider account (AWS S3 or DigitalOcean Spaces)
+Before deploying to production, ensure you have:
 
-## Deployment Steps
+- A server with Ubuntu 20.04+ or similar Linux distribution
+- Root access or sudo privileges
+- A domain name (optional but recommended)
+- SSL certificates (recommended for production)
 
-### 1. Server Setup
+## Server Setup
+
+### 1. Initial Server Preparation
+
+SSH into your server and run the production setup script:
 
 ```bash
-# SSH into your production server
-ssh user@your-server-ip
-
 # Clone the repository
-git clone https://github.com/ShovanSarker/LaunchKit.git
+git clone https://github.com/YOUR_USERNAME/LaunchKit.git
 cd LaunchKit
 
-# Run the setup script
+# Run the production setup script
 sudo ./scripts/setup_server.sh
 ```
 
-The setup script will prompt for:
-- Domain name (e.g., example.com)
-- Email for Let's Encrypt
-- Project slug (e.g., launchkit)
-- Database password
-- RabbitMQ password
-- SendGrid settings:
-  - API Key
-  - Verified sender email
-  - Sender name
-- Storage provider (AWS S3 or DO Spaces)
-- Storage credentials
+This script will:
+- Install system dependencies (Docker, Nginx, etc.)
+- Configure firewall and security settings
+- Create environment templates
+- Set up the run scripts directory structure
 
-The script will:
-1. Install system dependencies
-2. Install and configure Docker
-3. Set up firewall rules
-4. Configure Nginx
-5. Set up monitoring (Prometheus, Grafana)
-6. Configure backup service
-7. Set up security measures
-8. Create environment files
-9. Configure storage settings
-10. Set up auto-deployment
+### 2. Configure Environment Files
 
-### 2. Domain Configuration
-
-Point your domain's DNS to your server IP by adding the following A records:
-
-```
-@       -> your-server-ip
-www     -> your-server-ip
-api     -> your-server-ip
-monitor -> your-server-ip
-```
-
-Important: All subdomains must be properly configured in your DNS settings before running the SSL certificate setup. The following subdomains are required:
-- www.your-domain.com
-- api.your-domain.com
-- monitor.your-domain.com
-
-To verify DNS configuration:
-```bash
-# Check if DNS records are properly set
-dig www.your-domain.com
-dig api.your-domain.com
-dig monitor.your-domain.com
-
-# Wait for DNS propagation (can take up to 48 hours, but usually much faster)
-```
-
-Note: SSL certificate setup will fail if any of these subdomains are not properly configured in DNS.
-
-### 3. Email Setup (SendGrid)
-
-1. Create a SendGrid account:
-   - Go to SendGrid: https://signup.sendgrid.com/
-   - Complete the signup process
-   - Verify your domain
-
-2. Create an API Key:
-   - Go to Settings > API Keys
-   - Click 'Create API Key'
-   - Choose 'Full Access' or 'Restricted Access' with Mail Send permissions
-   - Copy the API key
-
-3. Verify your sender email:
-   - Go to Settings > Sender Authentication
-   - Click 'Verify a Single Sender'
-   - Fill in the required information
-   - Click 'Create'
-
-4. Configure domain authentication (recommended):
-   - Go to Settings > Sender Authentication
-   - Click 'Authenticate Your Domain'
-   - Follow the DNS configuration steps
-   - Wait for DNS propagation
-
-### 4. Storage Setup
-
-#### DigitalOcean Spaces Setup (Recommended)
-1. Create Spaces:
-   - Go to DigitalOcean Console: https://cloud.digitalocean.com/spaces
-   - Click 'Create Space'
-   - Create two spaces:
-     - `launchkit-static` for static files
-     - `launchkit-media` for media files
-   - Select region (e.g., nyc3)
-   - Choose 'Public' access
-   - Click 'Create Space'
-
-2. Configure CORS for each Space:
-   - Go to your Space
-   - Click 'Settings'
-   - Under 'CORS Configurations', click 'Add CORS Configuration'
-   - Add the following configuration:
-   ```json
-   {
-       "AllowedOrigins": [
-           "https://your-domain.com",
-           "https://www.your-domain.com",
-           "https://api.your-domain.com"
-       ],
-       "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
-       "AllowedHeaders": ["*"],
-       "MaxAgeSeconds": 3600
-   }
-   ```
-
-3. Configure CDN (optional):
-   - Go to your Space
-   - Click 'Settings'
-   - Under 'CDN', click 'Enable CDN'
-   - Choose your CDN endpoint
-
-4. Get API Keys:
-   - Go to API > Tokens/Keys
-   - Generate new Spaces access key
-   - Save both the key and secret
-
-#### AWS S3 Setup (Alternative)
-1. Create an S3 bucket:
-   - Go to AWS S3 Console: https://s3.console.aws.amazon.com
-   - Click 'Create bucket'
-   - Enter bucket name
-   - Select region
-   - Uncheck 'Block all public access'
-   - Enable versioning (recommended)
-   - Click 'Create bucket'
-
-2. Configure bucket policy:
-   - Select your bucket
-   - Go to 'Permissions' tab
-   - Click 'Bucket Policy'
-   - Add the following policy:
-   ```json
-   {
-       "Version": "2012-10-17",
-       "Statement": [
-           {
-               "Sid": "PublicReadGetObject",
-               "Effect": "Allow",
-               "Principal": "*",
-               "Action": "s3:GetObject",
-               "Resource": "arn:aws:s3:::your-bucket-name/*"
-           }
-       ]
-   }
-   ```
-
-3. Configure CORS:
-   - Go to 'Permissions' tab
-   - Click 'CORS configuration'
-   - Add the following configuration:
-   ```json
-   [
-       {
-           "AllowedHeaders": ["*"],
-           "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
-           "AllowedOrigins": [
-               "https://your-domain.com",
-               "https://www.your-domain.com",
-               "https://api.your-domain.com"
-           ],
-           "ExposeHeaders": ["ETag"],
-           "MaxAgeSeconds": 3600
-       }
-   ]
-   ```
-
-### 5. Deployment
-
-Run the deployment script:
+Copy and configure the production environment templates:
 
 ```bash
-./scripts/deploy_production.sh
+# API Environment
+cp templates/env/production/api.env.template api/.env
+# Edit api/.env with your production values
+
+# Frontend Environment
+cp templates/env/production/app.env.template app/.env.local
+# Edit app/.env.local with your production values
+
+# Docker Environment
+cp templates/env/production/docker.env.template docker/.env
+# Edit docker/.env with your production values
 ```
 
-The script will:
-1. Check requirements (Docker, docker-compose, git, certbot)
-2. Load environment variables
-3. Check storage buckets
-4. Set up SSL certificates
-5. Create and start the database
-6. Pull latest changes
-7. Deploy frontend and backend
-8. Start all services with Docker
-9. Verify security configuration
-10. Set up monitoring
-11. Perform health checks
+### 3. Configure DNS Records
 
-### 6. Monitoring Setup
+Set up DNS records pointing to your server:
 
-1. Access Grafana:
-   - URL: `https://monitor.your-domain.com`
-   - Use credentials set during setup
+```
+A     your-domain.com        → Your server IP
+A     api.your-domain.com    → Your server IP
+A     monitor.your-domain.com → Your server IP
+```
 
-2. Set up dashboards for:
-   - Application metrics
-   - Server metrics
-   - Database metrics
+### 4. Start Production Services
 
-### 7. Security Verification
+Start all production services:
 
 ```bash
-# Check firewall rules
-sudo ufw status
-
-# Verify Nginx configuration
-sudo nginx -t
-
-# Test SSL configuration
-curl -I https://your-domain.com
+# Start all production services
+./run/production/run_prod_all.sh
 ```
 
-### 8. Backup Verification
+### 5. Post-Deployment Tasks
+
+Run essential post-deployment tasks:
 
 ```bash
-# Check backup status
-sudo systemctl status backup.service
+# Run database migrations
+./run/production/run_backend.sh migrate
 
-# List available backups
-ls -l /backup/
+# Create superuser
+./run/production/run_backend.sh createsuperuser
+
+# Collect static files
+./run/production/run_backend.sh collectstatic
 ```
 
-### 9. Final Checks
+## Manual Service Management
+
+### Individual Service Control
+
+You can manage individual services:
 
 ```bash
-# Check service status
-docker compose -f docker/docker-compose.prod.yml ps
+# Backend API
+./run/production/run_backend.sh [start|stop|restart|status|logs|migrate|collectstatic|createsuperuser]
 
-# Monitor logs
-docker compose -f docker/docker-compose.prod.yml logs -f
+# Frontend
+./run/production/run_frontend.sh [start|stop|restart|status|logs|build]
+
+# Nginx
+./run/production/run_nginx.sh [start|stop|restart|status|logs|test|reload]
+
+# Monitoring
+./run/production/run_monitoring.sh [start|stop|restart|status|logs|grafana|prometheus]
+
+# Worker, Scheduler, Redis, RabbitMQ
+./run/production/run_worker.sh [start|stop|restart|status|logs]
+./run/production/run_scheduler.sh [start|stop|restart|status|logs]
+./run/production/run_redis.sh [start|stop|restart|status|logs|cli]
+./run/production/run_rabbitmq.sh [start|stop|restart|status|logs|ui]
 ```
+
+### All Services at Once
+
+```bash
+# Start all services
+./run/production/run_prod_all.sh
+
+# Stop all services
+./run/production/run_prod_all.sh stop
+
+# Restart all services
+./run/production/run_prod_all.sh restart
+
+# Health check
+./run/production/run_prod_all.sh health
+
+# View logs
+./run/production/run_prod_all.sh logs
+```
+
+## Environment Configuration
+
+### API Environment (`api/.env`)
+
+Key production settings:
+
+```bash
+# Project Settings
+PROJECT_NAME=YourProjectName
+PROJECT_SLUG=yourproject
+
+# Django Settings
+DJANGO_ENV=production
+DEBUG=False
+DJANGO_SECRET_KEY=your-very-secure-secret-key
+ALLOWED_HOSTS=your-domain.com,api.your-domain.com,www.your-domain.com
+CSRF_TRUSTED_ORIGINS=https://your-domain.com,https://api.your-domain.com
+
+# Database
+POSTGRES_DB=yourproject
+POSTGRES_USER=yourproject
+POSTGRES_PASSWORD=your-secure-db-password
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+# Email (Production)
+EMAIL_BACKEND=sendgrid_backend.SendgridBackend
+SENDGRID_API_KEY=your-sendgrid-api-key
+SENDGRID_FROM_EMAIL=your-email@your-domain.com
+
+# Frontend URL
+FRONTEND_URL=https://your-domain.com
+```
+
+### Frontend Environment (`app/.env.local`)
+
+Key production settings:
+
+```bash
+# Project Information
+NEXT_PUBLIC_PROJECT_NAME=YourProjectName
+NEXT_PUBLIC_PROJECT_SLUG=yourproject
+
+# API Settings
+NEXT_PUBLIC_API_URL=https://api.your-domain.com
+
+# Authentication
+NEXTAUTH_URL=https://your-domain.com
+NEXTAUTH_SECRET=your-nextauth-secret
+
+# Feature Flags
+NEXT_PUBLIC_FEATURE_REGISTRATION_ENABLED=true
+NEXT_PUBLIC_FEATURE_SOCIAL_LOGIN_ENABLED=false
+```
+
+### Docker Environment (`docker/.env`)
+
+Key production settings:
+
+```bash
+# Project Settings
+PROJECT_NAME=YourProjectName
+PROJECT_SLUG=yourproject
+
+# Domain
+DOMAIN=your-domain.com
+EMAIL=admin@your-domain.com
+
+# Database
+POSTGRES_DB=yourproject
+POSTGRES_USER=yourproject
+POSTGRES_PASSWORD=your-secure-db-password
+
+# RabbitMQ
+RABBITMQ_DEFAULT_USER=yourproject
+RABBITMQ_DEFAULT_PASS=your-rabbitmq-password
+RABBITMQ_DEFAULT_VHOST=yourproject
+
+# Monitoring
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=your-secure-grafana-password
+```
+
+## SSL Configuration
+
+### Automatic SSL with Let's Encrypt
+
+```bash
+# Install Certbot
+sudo apt install -y certbot python3-certbot-nginx
+
+# Get SSL certificates
+sudo certbot --nginx -d your-domain.com -d api.your-domain.com -d monitor.your-domain.com
+
+# Set up auto-renewal
+sudo crontab -e
+# Add: 0 12 * * * /usr/bin/certbot renew --quiet
+```
+
+### Manual SSL Configuration
+
+If you have your own SSL certificates:
+
+1. Place certificates in `/etc/ssl/certs/`
+2. Update Nginx configuration
+3. Restart Nginx: `./run/production/run_nginx.sh restart`
+
+## Monitoring and Logging
+
+### Health Checks
+
+```bash
+# Check overall health
+./run/production/run_prod_all.sh health
+
+# Check specific services
+./run/production/run_backend.sh status
+./run/production/run_frontend.sh status
+./run/production/run_nginx.sh status
+```
+
+### Monitoring Dashboard
+
+Access monitoring at:
+- **Grafana**: https://monitor.your-domain.com
+- **Prometheus**: http://your-server-ip:9090
+
+### Log Management
+
+```bash
+# View all logs
+./run/production/run_prod_all.sh logs
+
+# View specific service logs
+./run/production/run_backend.sh logs
+./run/production/run_nginx.sh logs
+
+# Follow logs in real-time
+./run/production/run_backend.sh logs | tail -f
+```
+
+## Backup Strategy
+
+### Database Backups
+
+```bash
+# Create backup script
+cat > /root/backup_db.sh << 'EOF'
+#!/bin/bash
+BACKUP_DIR="/var/backups/launchkit"
+DATE=$(date +%Y%m%d_%H%M%S)
+mkdir -p $BACKUP_DIR
+
+# Backup database
+docker exec launchkit_postgres pg_dump -U yourproject yourproject > $BACKUP_DIR/db_backup_$DATE.sql
+
+# Keep only last 30 days of backups
+find $BACKUP_DIR -name "db_backup_*.sql" -mtime +30 -delete
+EOF
+
+chmod +x /root/backup_db.sh
+
+# Add to crontab
+echo "0 2 * * * /root/backup_db.sh" | crontab -
+```
+
+### File Backups
+
+```bash
+# Backup important files
+tar -czf /var/backups/launchkit/files_backup_$(date +%Y%m%d_%H%M%S).tar.gz \
+  /opt/launchkit/api/.env \
+  /opt/launchkit/app/.env.local \
+  /opt/launchkit/docker/.env
+```
+
+## Security Hardening
+
+### Firewall Configuration
+
+The setup script configures UFW, but you can customize:
+
+```bash
+# Allow SSH
+sudo ufw allow ssh
+
+# Allow HTTP/HTTPS
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+# Enable firewall
+sudo ufw enable
+```
+
+### Fail2ban Configuration
+
+```bash
+# Check Fail2ban status
+sudo fail2ban-client status
+
+# View banned IPs
+sudo fail2ban-client status sshd
+```
+
+### Security Headers
+
+Nginx is configured with security headers, but you can customize:
+
+```bash
+# Edit Nginx configuration
+sudo nano /etc/nginx/sites-available/launchkit
+
+# Test configuration
+./run/production/run_nginx.sh test
+
+# Reload configuration
+./run/production/run_nginx.sh reload
+```
+
+## Performance Optimization
+
+### Database Optimization
+
+```bash
+# Check database performance
+docker exec -it launchkit_postgres psql -U yourproject -d yourproject -c "SELECT * FROM pg_stat_activity;"
+```
+
+### Nginx Optimization
+
+```bash
+# Check Nginx configuration
+./run/production/run_nginx.sh test
+
+# Monitor Nginx performance
+docker exec launchkit_nginx nginx -V
+```
+
+### Monitoring Alerts
+
+Set up monitoring alerts in Grafana:
+1. Access Grafana dashboard
+2. Create alert rules for critical metrics
+3. Configure notification channels (email, Slack, etc.)
 
 ## Troubleshooting
 
-### Service Issues
+### Common Issues
+
+1. **Service won't start**:
+   ```bash
+   # Check service status
+   ./run/production/run_backend.sh status
+   
+   # View logs
+   ./run/production/run_backend.sh logs
+   
+   # Check Docker
+   docker ps
+   docker logs <container_name>
+   ```
+
+2. **Database connection issues**:
+   ```bash
+   # Check database status
+   ./run/production/run_backend.sh status
+   
+   # Test database connection
+   docker exec -it launchkit_postgres psql -U yourproject -d yourproject -c "SELECT 1;"
+   ```
+
+3. **SSL certificate issues**:
+   ```bash
+   # Check certificate status
+   sudo certbot certificates
+   
+   # Renew certificates
+   sudo certbot renew
+   ```
+
+### Debugging Commands
 
 ```bash
-# Check service logs
-docker compose -f docker/docker-compose.prod.yml logs -f [service-name]
+# Check all services
+./run/production/run_prod_all.sh status
 
-# Restart service
-docker compose -f docker/docker-compose.prod.yml restart [service-name]
+# View all logs
+./run/production/run_prod_all.sh logs
+
+# Health check
+./run/production/run_prod_all.sh health
+
+# Check system resources
+docker stats
+df -h
+free -h
 ```
 
-### Database Issues
+### Emergency Procedures
 
 ```bash
-# Check database logs
-docker compose -f docker/docker-compose.prod.yml logs -f postgres
+# Stop all services
+./run/production/run_prod_all.sh stop
 
-# Access database
-docker compose -f docker/docker-compose.prod.yml exec postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+# Restart all services
+./run/production/run_prod_all.sh restart
+
+# Rollback to previous version
+git checkout <previous-commit>
+./run/production/run_prod_all.sh restart
 ```
-
-### Storage Issues
-
-```bash
-# Test storage connection
-docker compose -f docker/docker-compose.prod.yml exec api python manage.py check_storage
-
-# Verify permissions
-aws s3 ls s3://your-bucket-name/ --recursive
-```
-
-## Rollback Procedure
-
-### Application Rollback
-
-```bash
-# Revert to previous version
-git checkout <previous-version>
-docker compose -f docker/docker-compose.prod.yml up -d --build
-```
-
-### Database Rollback
-
-```bash
-# Restore from backup
-sudo -u postgres psql ${POSTGRES_DB} < /backup/${POSTGRES_DB}_backup.sql
-```
-
-## Scaling
-
-### Horizontal Scaling
-
-```bash
-# Scale API service
-docker compose -f docker/docker-compose.prod.yml up -d --scale api=3
-```
-
-### Load Balancer Setup
-
-1. Configure Nginx as load balancer
-2. Update SSL certificates
-3. Set up health checks
 
 ## Maintenance
 
-### Regular Updates
+### Regular Maintenance Tasks
+
+1. **Weekly**:
+   - Check service logs for errors
+   - Monitor disk space usage
+   - Review security logs
+
+2. **Monthly**:
+   - Update system packages
+   - Review and rotate logs
+   - Check SSL certificate expiration
+
+3. **Quarterly**:
+   - Review security settings
+   - Update application dependencies
+   - Test backup and restore procedures
+
+### Update Procedures
 
 ```bash
 # Pull latest changes
 git pull origin main
 
-# Rebuild and restart
-docker compose -f docker/docker-compose.prod.yml up -d --build
+# Rebuild containers
+cd docker && docker compose build --no-cache
+
+# Restart services
+./run/production/run_prod_all.sh restart
+
+# Run migrations
+./run/production/run_backend.sh migrate
 ```
 
-### Database Maintenance
+## Additional Resources
 
-```bash
-# Vacuum database
-docker compose -f docker/docker-compose.prod.yml exec postgres vacuumdb -U ${POSTGRES_USER} -d ${POSTGRES_DB}
-```
-
-### Log Rotation
-
-```bash
-# Check log rotation
-sudo logrotate -d /etc/logrotate.d/launchkit
-```
-
-## Security Best Practices
-
-1. Keep all software updated
-2. Regularly rotate credentials
-3. Monitor security logs
-4. Perform regular security audits
-5. Keep backups encrypted
-6. Use strong passwords
-7. Enable 2FA where possible
-8. Regular security scanning
-
-## Monitoring and Alerts
-
-1. Set up Grafana dashboards
-2. Configure alert thresholds
-3. Set up notification channels
-4. Monitor:
-   - Server resources
-   - Application performance
-   - Database metrics
-   - Storage usage
-   - Security events
-
-## Backup Strategy
-
-### Database Backups
-- Daily full backups
-- Point-in-time recovery
-- Off-site storage
-
-### File Backups
-- Regular S3/Spaces backups
-- Version control
-- Cross-region replication
-
-### Configuration Backups
-- Version control
-- Documented changes
-- Regular verification
-
-## Need Help?
-
-- Check the [troubleshooting guide](#troubleshooting)
-- Open an issue on GitHub
-- Contact the maintainers 
+- [Development Guide](DEVELOPMENT.md) - Local development setup
+- [Manual Setup Guide](../run/SETUP_GUIDE.md) - Detailed manual deployment guide
+- [API Handling Guide](../API_HANDLING_GUIDE.md) - API development guidelines
+- [Celery Setup Guide](../celery-setup.md) - Background task configuration 

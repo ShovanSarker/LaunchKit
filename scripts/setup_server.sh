@@ -4,15 +4,19 @@
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Default project settings
-DEFAULT_PROJECT_NAME="LaunchKit"
-DEFAULT_PROJECT_SLUG="launchkit"
+# Project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Function to print messages
 print_message() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    echo -e "${BLUE}[Setup]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
 print_error() {
@@ -33,39 +37,10 @@ get_input() {
     echo "${input:-$default}"
 }
 
-# Function to initialize project settings
-initialize_project_settings() {
-    print_message "Initializing project settings..."
-    
-    # Get project name and slug
-    PROJECT_NAME=$(get_input "Enter project name" "$DEFAULT_PROJECT_NAME")
-    PROJECT_SLUG=$(get_input "Enter project slug (lowercase, no spaces)" "$DEFAULT_PROJECT_SLUG")
-    
-    # Export variables for Docker and other processes
-    export PROJECT_NAME
-    export PROJECT_SLUG
-    
-    # Create or update the environment file
-    cat > .env << EOL
-# Project Settings
-PROJECT_NAME=${PROJECT_NAME}
-PROJECT_SLUG=${PROJECT_SLUG}
-EOL
-    
-    print_message "Project settings initialized:"
-    print_message "Project Name: ${PROJECT_NAME}"
-    print_message "Project Slug: ${PROJECT_SLUG}"
-}
-
-# Function to generate random string
-generate_random_string() {
-    openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32
-}
-
 # Function to check if running as root
 check_root() {
     if [ "$EUID" -ne 0 ]; then
-        print_error "Please run as root"
+        print_error "Please run as root (use sudo)"
         exit 1
     fi
 }
@@ -87,19 +62,14 @@ install_system_dependencies() {
         nginx \
         ufw \
         fail2ban \
-        prometheus \
         nodejs \
         npm \
         python3 \
         python3-pip \
         python3-venv \
-        apache2-utils  # Added for htpasswd
+        apache2-utils
     
-    # Install certbot only if SSL is enabled
-    if [ "$SSL_ENABLED" = true ]; then
-        print_message "Installing certbot for SSL..."
-        apt-get install -y certbot python3-certbot-nginx
-    fi
+    print_success "System dependencies installed"
 }
 
 # Function to install Docker
@@ -116,18 +86,23 @@ install_docker() {
     apt-get update
     
     # Install Docker
-    apt-get install -y docker-ce docker-ce-cli containerd.io
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
-    # Install Docker Compose
-    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
+    # Start and enable Docker
+    systemctl start docker
+    systemctl enable docker
+    
+    # Add current user to docker group
+    usermod -aG docker $SUDO_USER
+    
+    print_success "Docker installed and configured"
 }
 
 # Function to configure firewall
 configure_firewall() {
     print_message "Configuring firewall..."
     
-    # Reset firewall to default
+    # Reset UFW to defaults
     ufw --force reset
     
     # Set default policies
@@ -141,477 +116,18 @@ configure_firewall() {
     ufw allow 80/tcp
     ufw allow 443/tcp
     
-    # Enable firewall
+    # Enable UFW
     ufw --force enable
+    
+    print_success "Firewall configured"
 }
 
-# Function to setup AWS storage
-setup_aws_storage() {
-    print_message "Setting up AWS S3 storage..."
+# Function to configure Fail2ban
+configure_fail2ban() {
+    print_message "Configuring Fail2ban..."
     
-    AWS_ACCESS_KEY=$(get_input "Enter AWS Access Key ID" "")
-    AWS_SECRET_KEY=$(get_input "Enter AWS Secret Access Key" "")
-    AWS_BUCKET_NAME=$(get_input "Enter S3 Bucket Name" "${DOMAIN}-static")
-    AWS_REGION=$(get_input "Enter AWS Region" "us-east-1")
-    
-    # Add AWS settings to environment file
-    cat >> .env << EOL
-
-# AWS S3 Storage
-AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY}
-AWS_SECRET_ACCESS_KEY=${AWS_SECRET_KEY}
-AWS_STORAGE_BUCKET_NAME=${AWS_BUCKET_NAME}
-AWS_S3_REGION_NAME=${AWS_REGION}
-AWS_S3_CUSTOM_DOMAIN=s3.${AWS_REGION}.amazonaws.com
-AWS_DEFAULT_ACL=public-read
-AWS_S3_OBJECT_PARAMETERS='{"CacheControl": "max-age=86400"}'
-AWS_QUERYSTRING_AUTH=False
-AWS_S3_FILE_OVERWRITE=False
-AWS_S3_VERIFY=True
-AWS_S3_SIGNATURE_VERSION=s3v4
-EOL
-}
-
-# Function to setup DO storage
-setup_do_storage() {
-    print_message "Setting up DigitalOcean Spaces storage..."
-    
-    DO_SPACES_KEY=$(get_input "Enter DO Spaces Key" "")
-    DO_SPACES_SECRET=$(get_input "Enter DO Spaces Secret" "")
-    DO_SPACES_NAME=$(get_input "Enter DO Spaces Name" "${DOMAIN}-static")
-    DO_SPACES_REGION=$(get_input "Enter DO Spaces Region" "nyc3")
-    
-    # Add DO settings to environment file
-    cat >> .env << EOL
-
-# DigitalOcean Spaces Storage
-AWS_ACCESS_KEY_ID=${DO_SPACES_KEY}
-AWS_SECRET_ACCESS_KEY=${DO_SPACES_SECRET}
-AWS_STORAGE_BUCKET_NAME=${DO_SPACES_NAME}
-AWS_S3_REGION_NAME=${DO_SPACES_REGION}
-AWS_S3_ENDPOINT_URL=https://${DO_SPACES_REGION}.digitaloceanspaces.com
-AWS_S3_CUSTOM_DOMAIN=${DO_SPACES_NAME}.${DO_SPACES_REGION}.digitaloceanspaces.com
-AWS_DEFAULT_ACL=public-read
-AWS_S3_OBJECT_PARAMETERS='{"CacheControl": "max-age=86400"}'
-AWS_QUERYSTRING_AUTH=False
-AWS_S3_FILE_OVERWRITE=False
-AWS_S3_VERIFY=True
-AWS_S3_SIGNATURE_VERSION=s3v4
-EOL
-}
-
-# Function to setup Nginx
-setup_nginx() {
-    print_message "Setting up Nginx..."
-    
-    # Create required directories
-    mkdir -p nginx/conf.d nginx/ssl
-    
-    # Create rate limiting configuration
-    cat > nginx/conf.d/rate-limit.conf << EOL
-# Rate limiting zones
-limit_req_zone \$binary_remote_addr zone=api_limit:10m rate=10r/s;
-EOL
-    
-    # Create main application Nginx configuration
-    cat > nginx/conf.d/default.conf << EOL
-# Main frontend server
-server {
-    listen 80;
-    server_name ${DOMAIN} www.${DOMAIN};
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # Frontend
-    location / {
-        proxy_pass http://frontend:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-
-# API server
-server {
-    listen 80;
-    server_name api.${DOMAIN};
-
-    # Security headers
-    add_header X-Frame-Options "DENY" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'none'" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # CORS headers
-    add_header 'Access-Control-Allow-Origin' 'http://${DOMAIN}' always;
-    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-    add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
-
-    # Rate limiting
-    limit_req zone=api_limit burst=20 nodelay;
-
-    # API endpoints
-    location / {
-        proxy_pass http://api:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
-        # Handle OPTIONS method for CORS
-        if (\$request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' 'http://${DOMAIN}' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-            add_header 'Access-Control-Max-Age' 1728000;
-            add_header 'Content-Type' 'text/plain; charset=utf-8';
-            add_header 'Content-Length' 0;
-            return 204;
-        }
-    }
-}
-
-# Monitoring server
-server {
-    listen 80;
-    server_name monitor.${DOMAIN};
-
-    # Basic auth for monitoring
-    auth_basic "Monitoring Access";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-
-    # Security headers
-    add_header X-Frame-Options "DENY" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # Prometheus
-    location /prometheus {
-        proxy_pass http://prometheus:9090;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    # Grafana
-    location / {
-        proxy_pass http://grafana:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOL
-    
-    # Create basic auth for monitoring
-    print_message "Creating monitoring access credentials..."
-    MONITOR_USER=$(get_input "Enter monitoring username" "admin")
-    MONITOR_PASS=$(get_input "Enter monitoring password" "monitor123")
-    htpasswd -bc nginx/.htpasswd "$MONITOR_USER" "$MONITOR_PASS"
-    
-    print_message "Nginx configuration created successfully"
-    print_message "Frontend will be available at: http://${DOMAIN}"
-    print_message "API will be available at: http://api.${DOMAIN}"
-    print_message "Monitoring will be available at: http://monitor.${DOMAIN}"
-    
-    # Configure SSL if enabled
-    if [ "$SSL_ENABLED" = true ]; then
-        print_message "Configuring SSL with Let's Encrypt..."
-        certbot --nginx -d ${DOMAIN} -d www.${DOMAIN} -d api.${DOMAIN} -d monitor.${DOMAIN} --non-interactive --agree-tos --email ${EMAIL}
-        
-        # Update URLs to use HTTPS
-        print_message "Frontend will be available at: https://${DOMAIN}"
-        print_message "API will be available at: https://api.${DOMAIN}"
-        print_message "Monitoring will be available at: https://monitor.${DOMAIN}"
-    fi
-}
-
-# Function to setup monitoring configuration
-setup_monitoring() {
-    print_message "Setting up monitoring..."
-    
-    # Create Prometheus directory and configuration
-    mkdir -p prometheus
-    
-    # Create Prometheus configuration
-    cat > prometheus/prometheus.yml << EOL
-global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-  scrape_timeout: 10s
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: []
-
-rule_files:
-  - "rules/*.yml"
-
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-
-  - job_name: 'api'
-    metrics_path: '/metrics'
-    static_configs:
-      - targets: ['api:8000']
-
-  - job_name: 'node'
-    static_configs:
-      - targets: ['node-exporter:9100']
-
-  - job_name: 'cadvisor'
-    static_configs:
-      - targets: ['cadvisor:8080']
-
-  - job_name: 'nginx'
-    static_configs:
-      - targets: ['nginx:9113']
-
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis:9121']
-
-  - job_name: 'rabbitmq'
-    static_configs:
-      - targets: ['rabbitmq:15692']
-
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-EOL
-
-    # Create Grafana provisioning directory
-    mkdir -p grafana/provisioning/{datasources,dashboards}
-    
-    # Create Grafana datasource configuration
-    cat > grafana/provisioning/datasources/prometheus.yml << EOL
-apiVersion: 1
-
-datasources:
-  - name: Prometheus
-    type: prometheus
-    access: proxy
-    url: http://prometheus:9090
-    isDefault: true
-    editable: false
-EOL
-
-    print_message "Monitoring setup completed"
-}
-
-# Function to setup health checks
-setup_health_checks() {
-    print_message "Setting up health check endpoints..."
-    
-    # Create Django health check endpoint
-    mkdir -p api/apps/core/urls
-    
-    # Create health check URLs
-    cat > api/apps/core/urls/health.py << EOL
-from django.urls import path
-from django.http import JsonResponse
-
-def health_check(request):
-    return JsonResponse({"status": "healthy"})
-
-urlpatterns = [
-    path('', health_check, name='health_check'),
-]
-EOL
-
-    # Create Next.js health check endpoint
-    mkdir -p app/src/pages/api
-    
-    # Create health check API route
-    cat > app/src/pages/api/health.ts << EOL
-import type { NextApiRequest, NextApiResponse } from 'next'
-
-type HealthResponse = {
-  status: string
-}
-
-export default function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<HealthResponse>
-) {
-  res.status(200).json({ status: 'healthy' })
-}
-EOL
-
-    print_message "Health check endpoints created successfully"
-}
-
-# Function to setup auto-deployment
-setup_auto_deployment() {
-    print_message "Setting up auto-deployment..."
-    
-    # Get project directory
-    PROJECT_DIR=$(pwd)
-    
-    # Create auto-deployment script
-    cat > /usr/local/bin/check_updates.sh << EOL
-#!/bin/bash
-
-# Change to project directory
-cd ${PROJECT_DIR}
-
-# Check for updates
-git fetch origin
-
-# Get current branch
-CURRENT_BRANCH=\$(git rev-parse --abbrev-ref HEAD)
-
-# Check if there are updates
-if [ "\$(git rev-parse HEAD)" != "\$(git rev-parse origin/\$CURRENT_BRANCH)" ]; then
-    # Pull changes and deploy
-    git pull origin \$CURRENT_BRANCH
-    cd ${PROJECT_DIR} && ./scripts/deploy_production.sh
-fi
-EOL
-    
-    # Make script executable
-    chmod +x /usr/local/bin/check_updates.sh
-    
-    # Create systemd service
-    cat > /etc/systemd/system/launchkit-updater.service << EOL
-[Unit]
-Description=LaunchKit Auto Updater
-After=network.target
-
-[Service]
-Type=oneshot
-User=root
-WorkingDirectory=${PROJECT_DIR}
-ExecStart=/usr/local/bin/check_updates.sh
-EOL
-    
-    # Create systemd timer
-    cat > /etc/systemd/system/launchkit-updater.timer << EOL
-[Unit]
-Description=LaunchKit Auto Update Timer
-
-[Timer]
-OnCalendar=*:0/10
-Unit=launchkit-updater.service
-
-[Install]
-WantedBy=multi-user.target
-EOL
-    
-    # Reload systemd
-    systemctl daemon-reload
-    
-    # Enable and start the timer
-    systemctl enable launchkit-updater.timer
-    systemctl start launchkit-updater.timer
-    
-    print_message "Auto-deployment setup completed"
-    print_message "The system will check for updates every 10 minutes"
-}
-
-# Function to setup backup service
-setup_backup_service() {
-    print_message "Setting up backup service..."
-    
-    # Create backup directory
-    mkdir -p /backup
-    
-    # Create backup script
-    cat > /usr/local/bin/backup.sh << EOL
-#!/bin/bash
-
-# Change to project directory
-cd ${PROJECT_DIR}
-
-# Backup timestamp
-TIMESTAMP=\$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/backup"
-
-# Database backup
-docker compose -f docker/docker-compose.prod.yml exec -T postgres pg_dump -U \${POSTGRES_USER} > \${BACKUP_DIR}/db_\${TIMESTAMP}.sql
-
-# Compress backup
-gzip \${BACKUP_DIR}/db_\${TIMESTAMP}.sql
-
-# Keep only last 7 days of backups
-find \${BACKUP_DIR} -name "db_*.sql.gz" -mtime +7 -delete
-EOL
-    
-    # Make backup script executable
-    chmod +x /usr/local/bin/backup.sh
-    
-    # Create systemd service
-    cat > /etc/systemd/system/backup.service << EOL
-[Unit]
-Description=LaunchKit Backup Service
-After=network.target
-
-[Service]
-Type=oneshot
-User=root
-WorkingDirectory=${PROJECT_DIR}
-ExecStart=/usr/local/bin/backup.sh
-
-[Install]
-WantedBy=multi-user.target
-EOL
-    
-    # Create systemd timer
-    cat > /etc/systemd/system/backup.timer << EOL
-[Unit]
-Description=LaunchKit Backup Timer
-
-[Timer]
-OnCalendar=*-*-* 02:00:00
-Unit=backup.service
-
-[Install]
-WantedBy=multi-user.target
-EOL
-    
-    # Enable and start the timer
-    systemctl daemon-reload
-    systemctl enable backup.timer
-    systemctl start backup.timer
-    
-    print_message "Backup service setup completed"
-    print_message "Backups will run daily at 2:00 AM"
-}
-
-# Function to setup additional security
-setup_security() {
-    print_message "Setting up additional security measures..."
-    
-    # Install fail2ban
-    apt-get install -y fail2ban
-    
-    # Configure fail2ban
-    cat > /etc/fail2ban/jail.local << 'EOL'
+    # Create custom jail configuration
+    cat > /etc/fail2ban/jail.local << EOL
 [DEFAULT]
 bantime = 3600
 findtime = 600
@@ -620,578 +136,338 @@ maxretry = 3
 [sshd]
 enabled = true
 port = ssh
-filter = sshd
 logpath = /var/log/auth.log
 maxretry = 3
-bantime = 3600
 
 [nginx-http-auth]
 enabled = true
-filter = nginx-http-auth
 port = http,https
 logpath = /var/log/nginx/error.log
 maxretry = 3
-bantime = 3600
 EOL
     
-    # Start fail2ban
+    # Restart Fail2ban
+    systemctl restart fail2ban
     systemctl enable fail2ban
-    systemctl start fail2ban
     
-    # Set up automatic security updates
-    apt-get install -y unattended-upgrades
-    
-    cat > /etc/apt/apt.conf.d/20auto-upgrades << 'EOL'
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-APT::Periodic::AutocleanInterval "7";
-EOL
-    
-    # Configure automatic updates
-    cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'EOL'
-Unattended-Upgrade::Allowed-Origins {
-    "${distro_id}:${distro_codename}";
-    "${distro_id}:${distro_codename}-security";
-    "${distro_id}ESM:${distro_codename}";
-};
-Unattended-Upgrade::Package-Blacklist {
-};
-Unattended-Upgrade::DevRelease "auto";
-Unattended-Upgrade::Remove-Unused-Dependencies "true";
-Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "02:00";
-EOL
-    
-    print_message "Additional security measures setup completed"
+    print_success "Fail2ban configured"
 }
 
-# Function to create frontend environment file
-create_frontend_env() {
-    print_message "Creating frontend environment file..."
+# Function to create environment templates
+create_environment_templates() {
+    print_message "Creating environment templates..."
     
-    # Create .env file for frontend
-    cat > app/.env << EOL
-# API settings
-NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
-NEXT_PUBLIC_APP_URL=https://${DOMAIN}
+    # Create templates directory if it doesn't exist
+    mkdir -p "${PROJECT_ROOT}/templates/env/production"
+    
+    # Create API environment template
+    cat > "${PROJECT_ROOT}/templates/env/production/api.env.template" << 'EOL'
+# =============================================================================
+# LaunchKit - API Environment Configuration (Production)
+# =============================================================================
+# Copy this file to api/.env and update the values below
 
-# Authentication
-NEXTAUTH_URL=https://${DOMAIN}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+# =============================================================================
+# PROJECT SETTINGS
+# =============================================================================
+# TODO: Update these with your project information
+PROJECT_NAME=LaunchKit
+PROJECT_SLUG=launchkit
 
-# Other third-party services
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
-NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID:-}
+# =============================================================================
+# DJANGO SETTINGS
+# =============================================================================
+# TODO: Set to 'production' for production deployment
+DJANGO_ENV=production
+
+# TODO: Set to False in production
+DEBUG=False
+
+# TODO: Generate a secure secret key (use: openssl rand -base64 32)
+DJANGO_SECRET_KEY=your-secret-key-here
+
+# TODO: Add your domain names (comma-separated)
+ALLOWED_HOSTS=your-domain.com,api.your-domain.com,www.your-domain.com
+
+# TODO: Add your frontend URLs (comma-separated)
+CSRF_TRUSTED_ORIGINS=https://your-domain.com,https://api.your-domain.com
+
+# =============================================================================
+# DATABASE SETTINGS
+# =============================================================================
+# TODO: Update with your database credentials
+POSTGRES_DB=launchkit
+POSTGRES_USER=launchkit
+POSTGRES_PASSWORD=your-db-password-here
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+# =============================================================================
+# REDIS SETTINGS
+# =============================================================================
+# TODO: Update Redis URL if using external Redis
+REDIS_URL=redis://redis:6379/0
+
+# =============================================================================
+# RABBITMQ SETTINGS
+# =============================================================================
+# TODO: Update with your RabbitMQ credentials
+CELERY_BROKER_URL=amqp://launchkit:password@rabbitmq:5672/launchkit
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+# =============================================================================
+# EMAIL SETTINGS (PRODUCTION)
+# =============================================================================
+# TODO: Configure your email backend
+EMAIL_BACKEND=sendgrid_backend.SendgridBackend
+SENDGRID_API_KEY=your-sendgrid-api-key-here
+SENDGRID_FROM_EMAIL=your-email@your-domain.com
+
+# Alternative email backends:
+# EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+# EMAIL_HOST=smtp.gmail.com
+# EMAIL_PORT=587
+# EMAIL_USE_TLS=True
+# EMAIL_HOST_USER=your-email@gmail.com
+# EMAIL_HOST_PASSWORD=your-app-password
+
+# =============================================================================
+# FRONTEND URL
+# =============================================================================
+# TODO: Update with your frontend URL
+FRONTEND_URL=https://your-domain.com
+
+# =============================================================================
+# LOGGING SETTINGS
+# =============================================================================
+LOG_LEVEL=INFO
+LOG_FILE=/var/log/launchkit/api.log
+
+# =============================================================================
+# SECURITY SETTINGS
+# =============================================================================
+# TODO: Configure security settings
+SECURE_SSL_REDIRECT=True
+SECURE_HSTS_SECONDS=31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS=True
+SECURE_HSTS_PRELOAD=True
+SECURE_CONTENT_TYPE_NOSNIFF=True
+SECURE_BROWSER_XSS_FILTER=True
+X_FRAME_OPTIONS=DENY
+
+# =============================================================================
+# CORS SETTINGS
+# =============================================================================
+# TODO: Add your frontend domain
+CORS_ALLOWED_ORIGINS=https://your-domain.com
+CORS_ALLOW_CREDENTIALS=True
+
+# =============================================================================
+# JWT SETTINGS
+# =============================================================================
+# TODO: Generate secure JWT keys
+JWT_SECRET_KEY=your-jwt-secret-key-here
+JWT_ACCESS_TOKEN_LIFETIME=5
+JWT_REFRESH_TOKEN_LIFETIME=1
+
+# =============================================================================
+# MONITORING SETTINGS
+# =============================================================================
+# TODO: Configure monitoring endpoints
+PROMETHEUS_METRICS_EXPORT_PORT=8001
+PROMETHEUS_METRICS_EXPORT_ADDRESS=0.0.0.0
 EOL
 
-    # Copy frontend .env to docker directory
-    cp app/.env docker/frontend.env
-    
-    print_message "Frontend environment file created successfully"
-}
+    # Create Frontend environment template
+    cat > "${PROJECT_ROOT}/templates/env/production/app.env.template" << 'EOL'
+# =============================================================================
+# LaunchKit - Frontend Environment Configuration (Production)
+# =============================================================================
+# Copy this file to app/.env.local and update the values below
 
-# Function to create docker-compose file
-create_docker_compose() {
-    print_message "Creating Docker Compose file..."
-    
-    # Create docker directory if it doesn't exist
-    mkdir -p docker
-    
-    # Create docker-compose file
-    cat > docker/docker-compose.yml << EOL
-services:
-  api:
-    build:
-      context: ../api
-      dockerfile: Dockerfile
-    container_name: \${PROJECT_SLUG}_api
-    volumes:
-      - ../api:/app
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
-    env_file:
-      - .env
-    environment:
-      - DJANGO_SETTINGS_MODULE=project.settings.production
-      - DEBUG=False
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
+# =============================================================================
+# PROJECT INFORMATION
+# =============================================================================
+# TODO: Update with your project information
+NEXT_PUBLIC_PROJECT_NAME=LaunchKit
+NEXT_PUBLIC_PROJECT_SLUG=launchkit
 
-  frontend:
-    build:
-      context: ../app
-      dockerfile: Dockerfile
-    container_name: \${PROJECT_SLUG}_frontend
-    volumes:
-      - ../app:/app
-      - /app/node_modules
-    env_file:
-      - frontend.env
-    environment:
-      - NODE_ENV=production
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
+# =============================================================================
+# API SETTINGS
+# =============================================================================
+# TODO: Update with your API URL
+NEXT_PUBLIC_API_URL=https://api.your-domain.com
 
-  worker:
-    build:
-      context: ../api
-      dockerfile: Dockerfile
-    container_name: \${PROJECT_SLUG}_worker
-    command: celery -A project worker -l INFO
-    volumes:
-      - ../api:/app
-    env_file:
-      - .env
-    environment:
-      - DJANGO_SETTINGS_MODULE=project.settings.production
-      - DEBUG=False
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-    depends_on:
-      api:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
+# =============================================================================
+# AUTHENTICATION SETTINGS
+# =============================================================================
+# TODO: Update with your domain
+NEXTAUTH_URL=https://your-domain.com
 
-  scheduler:
-    build:
-      context: ../api
-      dockerfile: Dockerfile
-    container_name: \${PROJECT_SLUG}_scheduler
-    command: celery -A project beat -l INFO
-    volumes:
-      - ../api:/app
-    env_file:
-      - .env
-    environment:
-      - DJANGO_SETTINGS_MODULE=project.settings.production
-      - DEBUG=False
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-    depends_on:
-      api:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
+# TODO: Generate a secure secret (use: openssl rand -base64 32)
+NEXTAUTH_SECRET=your-nextauth-secret-here
 
-  db:
-    image: postgres:15-alpine
-    container_name: \${PROJECT_SLUG}_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    env_file:
-      - .env
-    environment:
-      - POSTGRES_DB=\${POSTGRES_DB}
-      - POSTGRES_USER=\${POSTGRES_USER}
-      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+# =============================================================================
+# FEATURE FLAGS
+# =============================================================================
+# TODO: Configure feature flags based on your needs
+NEXT_PUBLIC_FEATURE_REGISTRATION_ENABLED=true
+NEXT_PUBLIC_FEATURE_SOCIAL_LOGIN_ENABLED=false
+NEXT_PUBLIC_FEATURE_EMAIL_VERIFICATION_ENABLED=true
+NEXT_PUBLIC_FEATURE_PASSWORD_RESET_ENABLED=true
 
-  redis:
-    image: redis:7-alpine
-    container_name: \${PROJECT_SLUG}_redis
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+# =============================================================================
+# ANALYTICS SETTINGS
+# =============================================================================
+# TODO: Add your analytics configuration
+NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=
+NEXT_PUBLIC_MIXPANEL_TOKEN=
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: \${PROJECT_SLUG}_rabbitmq
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    environment:
-      - RABBITMQ_DEFAULT_USER=\${RABBITMQ_DEFAULT_USER}
-      - RABBITMQ_DEFAULT_PASS=\${RABBITMQ_DEFAULT_PASS}
-      - RABBITMQ_DEFAULT_VHOST=\${RABBITMQ_DEFAULT_VHOST}
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+# =============================================================================
+# MONITORING SETTINGS
+# =============================================================================
+# TODO: Configure monitoring endpoints
+NEXT_PUBLIC_MONITORING_URL=https://monitor.your-domain.com
+NEXT_PUBLIC_HEALTH_CHECK_URL=https://api.your-domain.com/api/health/
 
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: \${PROJECT_SLUG}_nginx
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/ssl:/etc/nginx/ssl
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
-      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      api:
-        condition: service_healthy
-      frontend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:v2.45.0
-    container_name: \${PROJECT_SLUG}_prometheus
-    volumes:
-      - ./prometheus:/etc/prometheus
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--storage.tsdb.retention.time=15d'
-      - '--web.enable-lifecycle'
-    ports:
-      - "9090:9090"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:10.0.3
-    container_name: \${PROJECT_SLUG}_grafana
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-    environment:
-      - GF_SECURITY_ADMIN_USER=\${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=\${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_DOMAIN=monitor.\${DOMAIN}
-      - GF_SERVER_ROOT_URL=https://monitor.\${DOMAIN}
-    ports:
-      - "3001:3000"
-    depends_on:
-      prometheus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.0
-    container_name: \${PROJECT_SLUG}_cadvisor
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:8080/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  node-exporter:
-    image: prom/node-exporter:v1.6.1
-    container_name: \${PROJECT_SLUG}_node-exporter
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    ports:
-      - "9100:9100"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9100/metrics"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-  redis_data:
-  rabbitmq_data:
-  prometheus_data:
-  grafana_data:
-  static_volume:
-  media_volume:
-
-networks:
-  default:
-    name: \${PROJECT_SLUG}_network
+# =============================================================================
+# DEVELOPMENT SETTINGS
+# =============================================================================
+# TODO: Set to false in production
+NODE_ENV=production
+NEXT_PUBLIC_DEBUG_MODE=false
 EOL
 
-    print_message "Docker Compose file created successfully"
-}
+    # Create Docker environment template
+    cat > "${PROJECT_ROOT}/templates/env/production/docker.env.template" << 'EOL'
+# =============================================================================
+# LaunchKit - Docker Environment Configuration (Production)
+# =============================================================================
+# Copy this file to docker/.env and update the values below
 
-# Function to create docker entrypoint script
-create_docker_entrypoint() {
-    print_message "Creating Docker entrypoint script..."
-    
-    # Create entrypoint script
-    cat > api/docker-entrypoint.sh << EOL
-#!/bin/bash
-set -e
+# =============================================================================
+# PROJECT SETTINGS
+# =============================================================================
+# TODO: Update with your project information
+PROJECT_NAME=LaunchKit
+PROJECT_SLUG=launchkit
 
-# Wait for database to be ready
-echo "Waiting for database..."
-while ! nc -z \$POSTGRES_HOST \$POSTGRES_PORT; do
-  sleep 0.1
-done
-echo "Database is ready!"
+# =============================================================================
+# DOMAIN SETTINGS
+# =============================================================================
+# TODO: Update with your domain
+DOMAIN=your-domain.com
+EMAIL=admin@your-domain.com
 
-# Run migrations
-echo "Running migrations..."
-python manage.py migrate
+# =============================================================================
+# DATABASE SETTINGS
+# =============================================================================
+# TODO: Update with your database credentials
+POSTGRES_DB=launchkit
+POSTGRES_USER=launchkit
+POSTGRES_PASSWORD=your-db-password-here
 
-# Collect static files
-echo "Collecting static files..."
-python manage.py collectstatic --noinput
+# =============================================================================
+# RABBITMQ SETTINGS
+# =============================================================================
+# TODO: Update with your RabbitMQ credentials
+RABBITMQ_DEFAULT_USER=launchkit
+RABBITMQ_DEFAULT_PASS=your-rabbitmq-password-here
+RABBITMQ_DEFAULT_VHOST=launchkit
 
-# Execute the command passed to docker run
-exec "\$@"
+# =============================================================================
+# MONITORING SETTINGS
+# =============================================================================
+# TODO: Update with your monitoring credentials
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=your-grafana-password-here
+
+# =============================================================================
+# SSL SETTINGS
+# =============================================================================
+# TODO: Configure SSL settings
+SSL_ENABLED=true
+SSL_EMAIL=admin@your-domain.com
+
+# =============================================================================
+# BACKUP SETTINGS
+# =============================================================================
+# TODO: Configure backup settings
+BACKUP_ENABLED=true
+BACKUP_RETENTION_DAYS=30
+BACKUP_SCHEDULE=0 2 * * *
+
+# =============================================================================
+# SECURITY SETTINGS
+# =============================================================================
+# TODO: Configure security settings
+FAIL2BAN_ENABLED=true
+UFW_ENABLED=true
+SECURITY_HEADERS_ENABLED=true
+
+# =============================================================================
+# PERFORMANCE SETTINGS
+# =============================================================================
+# TODO: Configure performance settings
+NGINX_WORKER_PROCESSES=auto
+NGINX_WORKER_CONNECTIONS=1024
+NGINX_KEEPALIVE_TIMEOUT=65
+NGINX_CLIENT_MAX_BODY_SIZE=10M
 EOL
 
-    # Make the script executable
-    chmod +x api/docker-entrypoint.sh
-    
-    print_message "Docker entrypoint script created successfully"
+    print_success "Environment templates created"
 }
 
-# Function to setup database
-setup_database() {
-    print_message "Setting up database..."
+# Function to create run scripts
+create_run_scripts() {
+    print_message "Creating run scripts..."
     
-    # Store the current directory
-    CURRENT_DIR=$(pwd)
+    # Create run directories
+    mkdir -p "${PROJECT_ROOT}/run/development"
+    mkdir -p "${PROJECT_ROOT}/run/production"
     
-    # Check if Docker is running and start it if needed
-    if ! systemctl is-active --quiet docker; then
-        print_message "Docker is not running. Starting Docker..."
-        systemctl start docker
-        sleep 5  # Wait for Docker to start
-    fi
+    # Make scripts executable
+    chmod +x "${PROJECT_ROOT}/run/development"/*.sh 2>/dev/null || true
+    chmod +x "${PROJECT_ROOT}/run/production"/*.sh 2>/dev/null || true
     
-    # Create docker directory and docker-compose file
-    create_docker_compose
-    
-    # Create docker entrypoint script
-    create_docker_entrypoint
-    
-    # Create required directories
-    mkdir -p nginx/conf.d nginx/ssl
-    
-    # Load environment variables
-    if [ -f "${CURRENT_DIR}/.env" ]; then
-        set -a  # automatically export all variables
-        source "${CURRENT_DIR}/.env"
-        set +a
-        
-        # Copy .env file to docker directory
-        cp "${CURRENT_DIR}/.env" "${CURRENT_DIR}/docker/.env"
-    else
-        print_error "Environment file .env not found in ${CURRENT_DIR}"
-        exit 1
-    fi
-    
-    # Print environment variables for debugging (without sensitive data)
-    print_message "Checking environment variables..."
-    print_message "POSTGRES_DB: ${POSTGRES_DB}"
-    print_message "POSTGRES_USER: ${POSTGRES_USER}"
-    print_message "POSTGRES_HOST: ${POSTGRES_HOST}"
-    
-    # Start database container with environment variables
-    print_message "Starting database container..."
-    cd "${CURRENT_DIR}/docker" && \
-    docker compose up -d postgres
-    
-    # Wait for database to be ready
-    print_message "Waiting for database to be ready..."
-    sleep 10
-    
-    # Check container status
-    print_message "Checking container status..."
-    docker ps | grep ${PROJECT_SLUG}_postgres
-    
-    # Check container logs
-    print_message "Checking container logs..."
-    docker logs ${PROJECT_SLUG}_postgres
-    
-    # Try to connect to database with explicit password
-    print_message "Attempting database connection..."
-    if docker compose exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" > /dev/null 2>&1; then
-        print_message "Database connection successful"
-    else
-        print_error "Database connection failed"
-        print_message "Attempting to connect with explicit password..."
-        PGPASSWORD=${POSTGRES_PASSWORD} docker compose exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l"
-        
-        print_message "Please check if:"
-        print_message "1. Docker is running"
-        print_message "2. Environment variables are set correctly"
-        print_message "3. Port 5432 is available"
-        print_message "4. Database container is healthy"
-        exit 1
-    fi
-    
-    cd "${CURRENT_DIR}"
+    print_success "Run scripts directory structure created"
+}
+
+# Function to display next steps
+display_next_steps() {
+    print_success "Server setup completed!"
+    echo ""
+    echo "Next steps:"
+    echo "1. Configure environment files:"
+    echo "   cp templates/env/production/api.env.template api/.env"
+    echo "   cp templates/env/production/app.env.template app/.env.local"
+    echo "   cp templates/env/production/docker.env.template docker/.env"
+    echo ""
+    echo "2. Edit the environment files with your values"
+    echo ""
+    echo "3. Configure DNS records:"
+    echo "   A     your-domain.com        → $(curl -s ifconfig.me)"
+    echo "   A     api.your-domain.com    → $(curl -s ifconfig.me)"
+    echo "   A     monitor.your-domain.com → $(curl -s ifconfig.me)"
+    echo ""
+    echo "4. Start production services:"
+    echo "   ./run/production/run_prod_all.sh"
+    echo ""
+    echo "5. Run post-deployment tasks:"
+    echo "   ./run/production/run_backend.sh migrate"
+    echo "   ./run/production/run_backend.sh createsuperuser"
+    echo ""
+    echo "6. View the setup guide for detailed instructions:"
+    echo "   cat run/SETUP_GUIDE.md"
+    echo ""
 }
 
 # Main function
 main() {
-    print_message "Starting server setup..."
+    print_message "Starting LaunchKit server setup..."
     
     # Check if running as root
     check_root
-    
-    # Get project directory
-    PROJECT_DIR=$(pwd)
-    
-    # Get domain information
-    DOMAIN=$(get_input "Enter your domain name" "example.com")
-    EMAIL=$(get_input "Enter your email for Let's Encrypt" "admin@example.com")
-    
-    # Ask about SSL configuration
-    CONFIGURE_SSL=$(get_input "Do you want to configure SSL with Let's Encrypt? (yes/no)" "yes")
-    if [ "$CONFIGURE_SSL" = "yes" ]; then
-        print_message "SSL will be configured with Let's Encrypt"
-        SSL_ENABLED=true
-    else
-        print_message "SSL configuration will be skipped"
-        SSL_ENABLED=false
-    fi
-    
-    # Generate secrets
-    DJANGO_SECRET_KEY=$(generate_random_string)
-    NEXTAUTH_SECRET=$(generate_random_string)
-    
-    # Get database credentials
-    POSTGRES_PASSWORD=$(get_input "Enter database password" "$(generate_random_string)")
-    RABBITMQ_PASSWORD=$(get_input "Enter RabbitMQ password" "$(generate_random_string)")
-    
-    # Get SendGrid settings
-    print_message "Setting up SendGrid email configuration..."
-    SENDGRID_API_KEY=$(get_input "Enter SendGrid API Key" "")
-    SENDGRID_FROM_EMAIL=$(get_input "Enter SendGrid verified sender email" "noreply@${DOMAIN}")
-    SENDGRID_FROM_NAME=$(get_input "Enter SendGrid sender name" "${PROJECT_SLUG}")
-    
-    # Create .env file for API
-    cat > .env << EOL
-# Django settings
-DEBUG=False
-SECRET_KEY=${DJANGO_SECRET_KEY}
-ALLOWED_HOSTS=${DOMAIN}
-CSRF_TRUSTED_ORIGINS=https://${DOMAIN}
-
-# Domain and Email settings
-DOMAIN=${DOMAIN}
-EMAIL=${EMAIL}
-
-# Database settings
-POSTGRES_DB=${PROJECT_SLUG}
-POSTGRES_USER=${PROJECT_SLUG}
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-
-# Redis settings
-REDIS_URL=redis://redis:6379/0
-
-# RabbitMQ settings
-RABBITMQ_DEFAULT_USER=${PROJECT_SLUG}
-RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
-RABBITMQ_DEFAULT_VHOST=/
-
-# SendGrid Email settings
-EMAIL_BACKEND=sendgrid_backend.SendgridBackend
-SENDGRID_API_KEY=${SENDGRID_API_KEY}
-SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME}
-DEFAULT_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-
-# Frontend settings
-NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
-NEXT_PUBLIC_APP_URL=https://${DOMAIN}
-NEXTAUTH_URL=https://${DOMAIN}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
-NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=${NEXT_PUBLIC_GOOGLE_ANALYTICS_ID:-}
-EOL
-    
-    # Get storage provider
-    STORAGE_PROVIDER=$(get_input "Choose storage provider (do/aws)" "do")
-    
-    if [ "$STORAGE_PROVIDER" = "aws" ]; then
-        setup_aws_storage
-    elif [ "$STORAGE_PROVIDER" = "do" ]; then
-        setup_do_storage
-    else
-        print_error "Invalid storage provider selected"
-        exit 1
-    fi
-    
-    # Add common storage settings
-    cat >> .env << EOL
-
-# Django Storage Settings
-DEFAULT_FILE_STORAGE=storages.backends.s3boto3.S3Boto3Storage
-STATICFILES_STORAGE=storages.backends.s3boto3.S3StaticStorage
-MEDIAFILES_STORAGE=storages.backends.s3boto3.S3Boto3Storage
-AWS_S3_STATIC_LOCATION=static
-AWS_S3_MEDIA_LOCATION=media
-EOL
-    
-    # Create frontend environment file
-    create_frontend_env
     
     # Install system dependencies
     install_system_dependencies
@@ -1202,36 +478,18 @@ EOL
     # Configure firewall
     configure_firewall
     
-    # Setup Nginx
-    setup_nginx
+    # Configure Fail2ban
+    configure_fail2ban
     
-    # Setup health checks
-    setup_health_checks
+    # Create environment templates
+    create_environment_templates
     
-    # Setup monitoring with improved configuration
-    setup_monitoring
+    # Create run scripts
+    create_run_scripts
     
-    # Setup backup service
-    setup_backup_service
-    
-    # Setup additional security
-    setup_security
-    
-    # Setup auto-deployment
-    setup_auto_deployment
-    
-    # Setup database
-    setup_database
-    
-    # Run deployment script
-    cd ${PROJECT_DIR} && ./scripts/deploy_production.sh
-    
-    print_message "Server setup completed successfully!"
-    print_message "Please review the .env files and update any missing values."
-    print_message "Backup service is configured to run daily at 2:00 AM"
-    print_message "Security updates are configured to run automatically"
-    print_message "Fail2ban is configured to protect against brute force attacks"
+    # Display next steps
+    display_next_steps
 }
 
 # Run main function
-main 
+main "$@" 
