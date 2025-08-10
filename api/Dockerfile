@@ -1,37 +1,69 @@
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        gcc \
-        python3-dev \
-        libpq-dev \
-        postgresql-client \
-        netcat-traditional \
-    && rm -rf /var/lib/apt/lists/*
-
-# Upgrade pip
-RUN pip install --no-cache-dir --upgrade pip
-
-# Copy requirements first for better caching
-COPY requirements/ /app/requirements/
-RUN pip install --no-cache-dir -r requirements/prod.txt
-
-# Copy entrypoint script
-COPY docker-entrypoint.sh /app/
-RUN chmod +x /app/docker-entrypoint.sh
-
-# Copy project files
-COPY . /app/
+# Multi-stage build for Django API
+FROM python:3.11-slim as builder
 
 # Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV DJANGO_SETTINGS_MODULE=project.settings.production
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Set entrypoint
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# Install system dependencies for building
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Default command (can be overridden)
-CMD ["gunicorn", "project.wsgi:application", "--bind", "0.0.0.0:8000"] 
+# Set work directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --user -r requirements.txt
+
+# Production stage
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/root/.local/bin:$PATH"
+
+# Install runtime dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpq5 \
+        curl \
+        wget \
+        postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Set work directory
+WORKDIR /app
+
+# Copy Python packages from builder stage
+COPY --from=builder /root/.local /root/.local
+
+# Copy project files
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p /app/staticfiles /app/media /app/logs \
+    && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/healthz || exit 1
+
+# Default command
+CMD ["gunicorn", "config.wsgi:application", "-b", "0.0.0.0:8000", "-w", "3", "--timeout", "120"]

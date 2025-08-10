@@ -21,11 +21,9 @@ Full‑stack Django + DRF + Celery + RabbitMQ + Redis + Next.js boilerplate. Eve
 
 ## Quick Links
 
+- [Bootstrap System Guide](docs/launchkit-bootstrap.md) - Complete bootstrap system documentation
 - [Development Guide](docs/DEVELOPMENT.md) - Setup and development workflow
 - [Production Guide](docs/PRODUCTION.md) - Deployment and production setup
-- [Manual Setup Guide](run/SETUP_GUIDE.md) - Manual deployment with individual scripts
-- [API Handling Guide](API_HANDLING_GUIDE.md) - API development guidelines
-- [Celery Setup Guide](celery-setup.md) - Background task configuration
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute to LaunchKit
 - [Code of Conduct](CODE_OF_CONDUCT.md) - Community guidelines
 - [Changelog](CHANGELOG.md) - Project version history
@@ -72,7 +70,40 @@ Full‑stack Django + DRF + Celery + RabbitMQ + Redis + Next.js boilerplate. Eve
 
 ## Quick Start
 
-### Development Environment
+### One-Command Bootstrap & Run
+
+LaunchKit now features a streamlined bootstrap system for easy deployment:
+
+1. **Bootstrap Your Project**
+   ```bash
+   # Interactive setup for development or production
+   ./scripts/bootstrap.sh
+   ```
+
+2. **Development Environment**
+   ```bash
+   # Start complete development stack
+   ./scripts/run_dev.sh
+   ```
+
+3. **Production Environment**
+   ```bash
+   # Deploy full production stack
+   ./scripts/run_prod.sh
+   ```
+
+4. **Access Your Application**
+   - **Development**: 
+     - Frontend: http://localhost:3000
+     - Backend API: http://localhost:8000
+     - API Documentation: http://localhost:8000/api/docs/
+   - **Production**: 
+     - Frontend: https://your-app-domain.com
+     - Backend API: https://your-api-domain.com
+
+### Manual Setup (Legacy)
+
+For manual deployment with individual scripts:
 
 1. **Initial Setup**
    ```bash

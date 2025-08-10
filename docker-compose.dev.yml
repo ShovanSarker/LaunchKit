@@ -1,0 +1,173 @@
+version: '3.8'
+
+services:
+  # Database service
+  db:
+    image: postgres:16-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-launchkit-dev}_db
+    volumes:
+      - pg_data_dev:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-launchkit_dev}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis service
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-launchkit-dev}_redis
+    volumes:
+      - redis_data_dev:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # RabbitMQ service
+  amqp:
+    image: rabbitmq:3-management-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-launchkit-dev}_amqp
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-guest}
+      - RABBITMQ_DEFAULT_VHOST=/
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # API service
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-launchkit-dev}_api
+    volumes:
+      - ./api:/app
+      - static_data_dev:/app/staticfiles
+      - media_data_dev:/app/media
+    environment:
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-1}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-http://localhost:3000}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      - DJANGO_STATIC_ROOT=${DJANGO_STATIC_ROOT:-/app/staticfiles}
+      - DJANGO_MEDIA_ROOT=${DJANGO_MEDIA_ROOT:-/app/media}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      amqp:
+        condition: service_healthy
+    command: python manage.py migrate && python manage.py runserver 0.0.0.0:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Celery Worker
+  worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-launchkit-dev}_worker
+    volumes:
+      - ./api:/app
+      - static_data_dev:/app/staticfiles
+      - media_data_dev:/app/media
+    environment:
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-1}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      - DJANGO_STATIC_ROOT=${DJANGO_STATIC_ROOT:-/app/staticfiles}
+      - DJANGO_MEDIA_ROOT=${DJANGO_MEDIA_ROOT:-/app/media}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      amqp:
+        condition: service_healthy
+    command: celery -A config worker -l info
+    restart: unless-stopped
+
+  # Celery Beat Scheduler
+  scheduler:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-launchkit-dev}_scheduler
+    volumes:
+      - ./api:/app
+      - static_data_dev:/app/staticfiles
+      - media_data_dev:/app/media
+    environment:
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-1}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      - DJANGO_STATIC_ROOT=${DJANGO_STATIC_ROOT:-/app/staticfiles}
+      - DJANGO_MEDIA_ROOT=${DJANGO_MEDIA_ROOT:-/app/media}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      amqp:
+        condition: service_healthy
+    command: celery -A config beat -l info
+    restart: unless-stopped
+
+volumes:
+  pg_data_dev:
+    driver: local
+  redis_data_dev:
+    driver: local
+  static_data_dev:
+    driver: local
+  media_data_dev:
+    driver: local
+
+networks:
+  default:
+    name: ${COMPOSE_PROJECT_NAME:-launchkit-dev}_network

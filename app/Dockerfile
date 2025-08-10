@@ -1,57 +1,62 @@
-FROM node:20-alpine AS base
+# Multi-stage build for Next.js app
+FROM node:18-alpine AS deps
 
-# Create app directory
+# Set environment variables
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Install dependencies only when needed
 WORKDIR /app
 
+# Copy package files
+COPY package.json package-lock.json* ./
+
 # Install dependencies
-COPY package*.json ./
-RUN npm install
-
-# Copy configuration files
-COPY tsconfig.json ./
-COPY next.config.js ./
-
-# Create necessary directories
-RUN mkdir -p public src
-
-# Copy source files
-COPY src ./src/
-
-# Copy optional files if they exist
-COPY public ./public/ 2>/dev/null || mkdir -p public
-COPY .env* ./ 2>/dev/null || echo "No .env files found"
+RUN npm ci --only=production
 
 # Builder stage
-FROM base AS builder
+FROM node:18-alpine AS builder
+
+# Set environment variables
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source code
+COPY . .
 
 # Build the application
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine AS runner
-
-WORKDIR /app
-
-# Create necessary directories
-RUN mkdir -p public
-
-# Copy necessary files from builder
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/public ./public/
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-
-# Copy environment files if they exist
-COPY --from=builder /app/.env* ./ 2>/dev/null || echo "No .env files to copy"
+FROM node:18-alpine AS runner
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3000
-ENV PROJECT_SLUG=${PROJECT_SLUG:-launchkit}
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+WORKDIR /app
+
+# Copy built application
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Switch to non-root user
+USER nextjs
 
 # Expose port
 EXPOSE 3000
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget -qO- http://localhost:3000/healthz || exit 1
+
 # Start the application
-CMD ["npm", "start"] 
+CMD ["node", "server.js"]
