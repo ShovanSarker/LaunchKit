@@ -5,7 +5,7 @@ import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { AuthProvider } from '@/lib/auth';
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { APP_CONFIG } from '../../lib/config';
+import { APP_CONFIG } from '../../../src/lib/config';
 
 const inter = Inter({ subsets: ['latin'] });
 
