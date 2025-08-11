@@ -5,7 +5,13 @@ import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { AuthProvider } from '@/lib/auth';
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { APP_CONFIG } from '../../../src/lib/config';
+// Inline configuration to avoid import issues
+const APP_CONFIG = {
+  APP_NAME: process.env.NEXT_PUBLIC_SITE_NAME || 'LaunchKit',
+  APP_DESCRIPTION: process.env.NEXT_PUBLIC_APP_DESCRIPTION || 'A full-stack boilerplate for modern web applications',
+  DEFAULT_THEME: 'light' as const,
+  SUPPORTED_THEMES: ['light', 'dark'] as const,
+};
 
 const inter = Inter({ subsets: ['latin'] });
 
