@@ -78,7 +78,7 @@ services:
         condition: service_healthy
       amqp:
         condition: service_healthy
-    command: gunicorn config.wsgi:application -b 0.0.0.0:8000 -w 3 --timeout 120
+    command: gunicorn project.wsgi:application -b 0.0.0.0:8000 -w 3 --timeout 120
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8000/api/health/"]
       interval: 30s
