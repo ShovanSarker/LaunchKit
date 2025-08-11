@@ -206,8 +206,9 @@ services:
     environment:
       - PUBLIC_DOMAIN_API=${PUBLIC_DOMAIN_API}
       - PUBLIC_DOMAIN_APP=${PUBLIC_DOMAIN_APP}
+    command: /bin/sh -c "envsubst '$PUBLIC_DOMAIN_API $PUBLIC_DOMAIN_APP' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
       - ./infra/auth/htpasswd:/etc/nginx/.htpasswd:ro
       - static_data:/var/www/static:ro
       - media_data:/var/www/media:ro
