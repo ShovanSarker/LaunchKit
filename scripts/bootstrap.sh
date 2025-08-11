@@ -315,6 +315,7 @@ main() {
     
     # Bootstrap based on environment
     local env_file=""
+    
     if [ "$environment" = "development" ]; then
         bootstrap_development
         env_file="${ENV_DIR}/.env.dev"
@@ -335,6 +336,13 @@ main() {
     echo "  Project Slug: $project_slug"
     echo "  Environment: $environment"
     echo "  Environment File: $env_file"
+    if [ "$environment" = "production" ]; then
+        # Read domains from the generated .env.prod file
+        local api_domain_from_env=$(grep "^PUBLIC_DOMAIN_API=" "$env_file" | cut -d'=' -f2)
+        local app_domain_from_env=$(grep "^PUBLIC_DOMAIN_APP=" "$env_file" | cut -d'=' -f2)
+        echo "  API Domain: $api_domain_from_env"
+        echo "  App Domain: $app_domain_from_env"
+    fi
     echo
     print_message "Next steps:"
     if [ "$environment" = "development" ]; then
@@ -342,9 +350,12 @@ main() {
         echo "  API will be available at: http://localhost:8000"
         echo "  Frontend can be run locally with: cd app && npm run dev"
     else
+        # Read domains from the generated .env.prod file for the next steps
+        local api_domain_from_env=$(grep "^PUBLIC_DOMAIN_API=" "$env_file" | cut -d'=' -f2)
+        local app_domain_from_env=$(grep "^PUBLIC_DOMAIN_APP=" "$env_file" | cut -d'=' -f2)
         echo "  Run: ./scripts/run_prod.sh"
-        echo "  Configure DNS records for: $api_domain and $app_domain"
-        echo "  Obtain SSL certificates with: certbot --nginx -d $api_domain -d $app_domain"
+        echo "  Configure DNS records for: $api_domain_from_env and $app_domain_from_env"
+        echo "  Obtain SSL certificates with: certbot --nginx -d $api_domain_from_env -d $app_domain_from_env"
     fi
     echo
 }
