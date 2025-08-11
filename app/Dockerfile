@@ -10,8 +10,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Builder stage
 FROM node:18-alpine AS builder
@@ -30,6 +30,20 @@ COPY . .
 # Build the application
 RUN npm run build
 
+# Production dependencies stage
+FROM node:18-alpine AS deps-prod
+
+# Set environment variables
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install only production dependencies
+RUN npm ci --only=production
+
 # Production stage
 FROM node:18-alpine AS runner
 
@@ -42,6 +56,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 WORKDIR /app
+
+# Copy production dependencies
+COPY --from=deps-prod /app/node_modules ./node_modules
 
 # Copy built application
 COPY --from=builder /app/public ./public
