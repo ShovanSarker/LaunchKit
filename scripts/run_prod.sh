@@ -127,21 +127,21 @@ check_port_conflicts() {
     fi
 }
 
-# Function to pull latest images
-pull_images() {
+# Function to build images
+build_images() {
     local env_file="${ENV_DIR}/.env.prod"
     local compose_file="${PROJECT_ROOT}/docker-compose.prod.yml"
     local project_name=$(get_compose_project_name)
     
-    print_message "Pulling latest images..."
+    print_message "Building images..."
     
     # Set compose project name
     export COMPOSE_PROJECT_NAME="$project_name"
     
-    # Pull images
-    docker compose --env-file "$env_file" -f "$compose_file" pull
+    # Build images
+    docker compose --env-file "$env_file" -f "$compose_file" build
     
-    print_success "Images pulled successfully"
+    print_success "Images built successfully"
 }
 
 # Function to start production stack
@@ -232,7 +232,7 @@ wait_for_services() {
     print_message "Waiting for API..."
     attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if docker compose -p "$project_name" exec -T api wget -qO- http://localhost:8000/healthz >/dev/null 2>&1; then
+        if docker compose -p "$project_name" exec -T api wget -qO- http://localhost:8000/api/health/ >/dev/null 2>&1; then
             print_success "API is ready"
             break
         fi
@@ -251,7 +251,7 @@ wait_for_services() {
     print_message "Waiting for Next.js..."
     attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if docker compose -p "$project_name" exec -T nextjs wget -qO- http://localhost:3000/healthz >/dev/null 2>&1; then
+        if docker compose -p "$project_name" exec -T nextjs wget -qO- http://localhost:3000/api/health >/dev/null 2>&1; then
             print_success "Next.js is ready"
             break
         fi
@@ -324,10 +324,10 @@ print_service_info() {
     echo
     print_message "Services:"
     echo "  API:         https://$api_domain"
-    echo "  API Health:  https://$api_domain/healthz"
+    echo "  API Health:  https://$api_domain/api/health/"
     echo "  API Docs:    https://$api_domain/api/docs/"
     echo "  Frontend:    https://$app_domain"
-    echo "  Frontend Health: https://$app_domain/healthz"
+    echo "  Frontend Health: https://$app_domain/api/health"
     echo "  Flower:      https://$api_domain/flower/"
     
     if [ "$enable_monitoring" = "true" ]; then
@@ -378,8 +378,8 @@ handle_arguments() {
             docker compose -p "$project_name" ps
             exit 0
             ;;
-        "pull")
-            pull_images
+        "build")
+            build_images
             exit 0
             ;;
         "help"|"-h"|"--help")
@@ -391,7 +391,7 @@ handle_arguments() {
             echo "  restart    Restart the production stack"
             echo "  logs       Show logs (optionally specify service)"
             echo "  status     Show service status"
-            echo "  pull       Pull latest images"
+            echo "  build      Build images"
             echo "  help       Show this help message"
             exit 0
             ;;
@@ -429,8 +429,8 @@ main() {
     # Check for port conflicts
     check_port_conflicts
     
-    # Pull latest images
-    pull_images
+    # Build images (if needed)
+    build_images
     
     # Start the production stack
     start_prod_stack

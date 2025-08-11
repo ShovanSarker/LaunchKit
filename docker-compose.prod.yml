@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   # Database service
@@ -48,7 +48,9 @@ services:
 
   # API service
   api:
-    image: ghcr.io/launchkit/launchkit-api:latest
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-launchkit-prod}_api
     volumes:
       - static_data:/app/staticfiles
@@ -78,7 +80,7 @@ services:
         condition: service_healthy
     command: gunicorn config.wsgi:application -b 0.0.0.0:8000 -w 3 --timeout 120
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8000/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/api/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -87,7 +89,9 @@ services:
 
   # Celery Worker
   worker:
-    image: ghcr.io/launchkit/launchkit-api:latest
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-launchkit-prod}_worker
     volumes:
       - static_data:/app/staticfiles
@@ -112,12 +116,14 @@ services:
         condition: service_healthy
       amqp:
         condition: service_healthy
-    command: celery -A config worker -l info
+    command: celery -A project worker -l info
     restart: unless-stopped
 
   # Celery Beat Scheduler
   scheduler:
-    image: ghcr.io/launchkit/launchkit-api:latest
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-launchkit-prod}_scheduler
     volumes:
       - static_data:/app/staticfiles
@@ -142,12 +148,14 @@ services:
         condition: service_healthy
       amqp:
         condition: service_healthy
-    command: celery -A config beat -l info
+    command: celery -A project beat -l info
     restart: unless-stopped
 
   # Next.js Frontend
   nextjs:
-    image: ghcr.io/launchkit/launchkit-nextjs:latest
+    build:
+      context: ./app
+      dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-launchkit-prod}_nextjs
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
@@ -156,7 +164,7 @@ services:
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

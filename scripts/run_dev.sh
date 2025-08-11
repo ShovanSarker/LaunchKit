@@ -215,7 +215,7 @@ wait_for_services() {
     print_message "Waiting for API..."
     attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:8000/healthz >/dev/null 2>&1; then
+        if curl -s http://localhost:8000/api/health/ >/dev/null 2>&1; then
             print_success "API is ready"
             break
         fi
@@ -253,7 +253,7 @@ print_service_info() {
     echo
     print_message "Services:"
     echo "  API:         http://localhost:8000"
-    echo "  API Health:  http://localhost:8000/healthz"
+    echo "  API Health:  http://localhost:8000/api/health/"
     echo "  API Docs:    http://localhost:8000/api/docs/"
     echo "  Database:    localhost:5432 (postgres/postgres)"
     echo "  Redis:       localhost:6379"
