@@ -18,6 +18,10 @@ const nextConfig = {
   },
   webpack: (config) => {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
     return config;
   },
 };
