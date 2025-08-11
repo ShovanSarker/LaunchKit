@@ -281,8 +281,15 @@ dist
 Thumbs.db
 
 # LaunchKit specific
+# Environment files (generated ones, not the examples)
+env/.env.dev
+env/.env.prod
 
+# Bootstrap state (contains generated secrets)
 config/.bootstrap_state.json
+
+# Authentication files (contains generated passwords)
+infra/auth/htpasswd
 
 # Backups
 backup/

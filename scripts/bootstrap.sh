@@ -239,6 +239,10 @@ bootstrap_production() {
     sed -i.bak "s/ADMIN_EMAIL=admin@example.com/ADMIN_EMAIL=$admin_email/" "$env_file"
     sed -i.bak "s/DEFAULT_FROM_EMAIL=noreply@example.com/DEFAULT_FROM_EMAIL=noreply@$api_domain/" "$env_file"
     
+    # Generate Flower password and update it
+    local flower_password=$(generate_random_string | cut -c1-16)
+    sed -i.bak "s/FLOWER_PASSWORD=prod-change-me/FLOWER_PASSWORD=$flower_password/" "$env_file"
+    
     # Remove backup file
     rm -f "${env_file}.bak"
     
