@@ -121,6 +121,41 @@ create_htpasswd() {
     print_success "Created htpasswd file: $htpasswd_file"
 }
 
+# Function to get or generate shared configuration
+get_shared_config() {
+    local config_file="${CONFIG_DIR}/.shared_config.json"
+    
+    # Create config directory if it doesn't exist
+    mkdir -p "$CONFIG_DIR"
+    
+    # If shared config exists, read from it, otherwise generate new values
+    if [ -f "$config_file" ]; then
+        print_message "Using existing shared configuration"
+        SHARED_PROJECT_NAME=$(jq -r '.project_name' "$config_file" 2>/dev/null || echo "LaunchKit")
+        SHARED_PROJECT_SLUG=$(jq -r '.project_slug' "$config_file" 2>/dev/null || echo "launchkit")
+        SHARED_DB_PASSWORD=$(jq -r '.db_password' "$config_file" 2>/dev/null || echo "")
+        SHARED_RABBITMQ_PASSWORD=$(jq -r '.rabbitmq_password' "$config_file" 2>/dev/null || echo "")
+    else
+        print_message "Generating new shared configuration"
+        SHARED_PROJECT_NAME=$(get_input "Enter project name" "LaunchKit")
+        SHARED_PROJECT_SLUG=$(slugify "$SHARED_PROJECT_NAME")
+        SHARED_DB_PASSWORD=$(generate_random_string | cut -c1-16)
+        SHARED_RABBITMQ_PASSWORD=$(generate_random_string | cut -c1-16)
+        
+        # Save shared configuration
+        cat > "$config_file" << EOF
+{
+  "project_name": "$SHARED_PROJECT_NAME",
+  "project_slug": "$SHARED_PROJECT_SLUG",
+  "db_password": "$SHARED_DB_PASSWORD",
+  "rabbitmq_password": "$SHARED_RABBITMQ_PASSWORD",
+  "generated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+EOF
+        print_success "Shared configuration saved: $config_file"
+    fi
+}
+
 # Function to bootstrap development environment
 bootstrap_development() {
     print_message "Setting up development environment..."
@@ -138,22 +173,27 @@ bootstrap_development() {
         return 0
     fi
     
-    # Get development configuration
-    local project_name=$(get_input "Enter project name" "LaunchKit")
-    local project_slug=$(slugify "$project_name")
+    # Get shared configuration
+    get_shared_config
     
     local dev_api_url=$(get_input "Enter development API URL" "http://localhost:8000")
     local dev_app_url=$(get_input "Enter development app URL" "http://localhost:3000")
     
-    # Generate development secret
+    # Generate development-specific secret
     local dev_secret=$(generate_random_string)
     
     # Copy template and replace values
     cp "$template_file" "$env_file"
     
-    # Replace values in the environment file
-    sed -i.bak "s/PROJECT_NAME=launchkit/PROJECT_NAME=$project_name/" "$env_file"
-    sed -i.bak "s/COMPOSE_PROJECT_NAME=launchkit-dev/COMPOSE_PROJECT_NAME=${project_slug}-dev/" "$env_file"
+    # Replace shared values
+    sed -i.bak "s/PROJECT_NAME=launchkit/PROJECT_NAME=$SHARED_PROJECT_NAME/" "$env_file"
+    sed -i.bak "s/COMPOSE_PROJECT_NAME=launchkit-dev/COMPOSE_PROJECT_NAME=${SHARED_PROJECT_SLUG}-dev/" "$env_file"
+    sed -i.bak "s/POSTGRES_PASSWORD=postgres/POSTGRES_PASSWORD=$SHARED_DB_PASSWORD/" "$env_file"
+    sed -i.bak "s|DATABASE_URL=postgres://postgres:postgres@db:5432/launchkit_dev|DATABASE_URL=postgres://launchkit:$SHARED_DB_PASSWORD@db:5432/launchkit_dev|" "$env_file"
+    sed -i.bak "s/RABBITMQ_DEFAULT_PASS=guest/RABBITMQ_DEFAULT_PASS=$SHARED_RABBITMQ_PASSWORD/" "$env_file"
+    sed -i.bak "s|CELERY_BROKER_URL=amqp://guest:guest@amqp:5672//|CELERY_BROKER_URL=amqp://launchkit:$SHARED_RABBITMQ_PASSWORD@amqp:5672//|" "$env_file"
+    
+    # Replace development-specific values
     sed -i.bak "s/DJANGO_SECRET_KEY=dev-change-me/DJANGO_SECRET_KEY=$dev_secret/" "$env_file"
     sed -i.bak "s|CSRF_TRUSTED_ORIGINS=http://localhost:3000|CSRF_TRUSTED_ORIGINS=$dev_app_url|" "$env_file"
     sed -i.bak "s|NEXT_PUBLIC_API_URL=http://localhost:8000|NEXT_PUBLIC_API_URL=$dev_api_url|" "$env_file"
@@ -182,9 +222,8 @@ bootstrap_production() {
         return 0
     fi
     
-    # Get production configuration
-    local project_name=$(get_input "Enter project name" "LaunchKit")
-    local project_slug=$(slugify "$project_name")
+    # Get shared configuration
+    get_shared_config
     
     # Get domain configuration
     local api_domain=""
@@ -215,24 +254,24 @@ bootstrap_production() {
         fi
     done
     
-    # Generate production secrets
+    # Generate production-specific secret
     local prod_secret=$(generate_random_string)
-    local db_password=$(generate_random_string | cut -c1-16)
-    local rabbitmq_password=$(generate_random_string | cut -c1-16)
     
     # Copy template and replace values
     cp "$template_file" "$env_file"
     
-    # Replace values in the environment file
-    sed -i.bak "s/PROJECT_NAME=launchkit/PROJECT_NAME=$project_name/" "$env_file"
-    sed -i.bak "s/COMPOSE_PROJECT_NAME=launchkit-prod/COMPOSE_PROJECT_NAME=${project_slug}-prod/" "$env_file"
+    # Replace shared values (using same passwords as development)
+    sed -i.bak "s/PROJECT_NAME=launchkit/PROJECT_NAME=$SHARED_PROJECT_NAME/" "$env_file"
+    sed -i.bak "s/COMPOSE_PROJECT_NAME=launchkit-prod/COMPOSE_PROJECT_NAME=${SHARED_PROJECT_SLUG}-prod/" "$env_file"
+    sed -i.bak "s/POSTGRES_PASSWORD=prod-change-me/POSTGRES_PASSWORD=$SHARED_DB_PASSWORD/" "$env_file"
+    sed -i.bak "s|DATABASE_URL=postgres://launchkit:prod-change-me@db:5432/launchkit_prod|DATABASE_URL=postgres://launchkit:$SHARED_DB_PASSWORD@db:5432/launchkit_prod|" "$env_file"
+    sed -i.bak "s/RABBITMQ_DEFAULT_PASS=prod-change-me/RABBITMQ_DEFAULT_PASS=$SHARED_RABBITMQ_PASSWORD/" "$env_file"
+    sed -i.bak "s|CELERY_BROKER_URL=amqp://launchkit:prod-change-me@amqp:5672//|CELERY_BROKER_URL=amqp://launchkit:$SHARED_RABBITMQ_PASSWORD@amqp:5672//|" "$env_file"
+    
+    # Replace production-specific values
     sed -i.bak "s/DJANGO_SECRET_KEY=prod-change-me/DJANGO_SECRET_KEY=$prod_secret/" "$env_file"
     sed -i.bak "s/DJANGO_ALLOWED_HOSTS=api.example.com/DJANGO_ALLOWED_HOSTS=$api_domain/" "$env_file"
     sed -i.bak "s|CSRF_TRUSTED_ORIGINS=https://api.example.com,https://app.example.com|CSRF_TRUSTED_ORIGINS=https://$api_domain,https://$app_domain|" "$env_file"
-    sed -i.bak "s/POSTGRES_PASSWORD=prod-change-me/POSTGRES_PASSWORD=$db_password/" "$env_file"
-    sed -i.bak "s|DATABASE_URL=postgres://launchkit:prod-change-me@db:5432/launchkit_prod|DATABASE_URL=postgres://launchkit:$db_password@db:5432/launchkit_prod|" "$env_file"
-    sed -i.bak "s/RABBITMQ_DEFAULT_PASS=prod-change-me/RABBITMQ_DEFAULT_PASS=$rabbitmq_password/" "$env_file"
-    sed -i.bak "s|CELERY_BROKER_URL=amqp://launchkit:prod-change-me@amqp:5672//|CELERY_BROKER_URL=amqp://launchkit:$rabbitmq_password@amqp:5672//|" "$env_file"
     sed -i.bak "s|NEXT_PUBLIC_API_URL=https://api.example.com|NEXT_PUBLIC_API_URL=https://$api_domain|" "$env_file"
     sed -i.bak "s/PUBLIC_DOMAIN_API=api.example.com/PUBLIC_DOMAIN_API=$api_domain/" "$env_file"
     sed -i.bak "s/PUBLIC_DOMAIN_APP=app.example.com/PUBLIC_DOMAIN_APP=$app_domain/" "$env_file"
@@ -292,7 +331,7 @@ main() {
     
     # Check for required commands
     local missing_commands=()
-    for cmd in docker docker-compose; do
+    for cmd in docker docker-compose jq; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             missing_commands+=("$cmd")
         fi
@@ -300,7 +339,7 @@ main() {
     
     if [ ${#missing_commands[@]} -gt 0 ]; then
         print_error "Missing required commands: ${missing_commands[*]}"
-        print_message "Please install Docker and Docker Compose before running bootstrap"
+        print_message "Please install Docker, Docker Compose, and jq before running bootstrap"
         exit 1
     fi
     
