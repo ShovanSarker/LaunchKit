@@ -168,6 +168,9 @@ wait_for_services() {
     print_message "Waiting for services to be ready..."
     
     local project_name=$(get_compose_project_name)
+    local env_file="${ENV_DIR}/.env.prod"
+    local pg_user=$(grep "^POSTGRES_USER=" "$env_file" | cut -d'=' -f2)
+    if [ -z "$pg_user" ]; then pg_user="launchkit"; fi
     
     # Wait for database
     print_message "Waiting for database..."
@@ -175,7 +178,7 @@ wait_for_services() {
     local attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        if docker compose -p "$project_name" exec -T db pg_isready -U launchkit >/dev/null 2>&1; then
+        if docker compose -p "$project_name" exec -T db pg_isready -U "$pg_user" >/dev/null 2>&1; then
             print_success "Database is ready"
             break
         fi
@@ -286,12 +289,36 @@ wait_for_services() {
     done
 }
 
+# Function to sync Postgres role/database with env values
+sync_postgres_credentials() {
+    local project_name=$(get_compose_project_name)
+    local env_file="${ENV_DIR}/.env.prod"
+    local pg_user=$(grep "^POSTGRES_USER=" "$env_file" | cut -d'=' -f2)
+    local pg_password=$(grep "^POSTGRES_PASSWORD=" "$env_file" | cut -d'=' -f2)
+    local pg_db=$(grep "^POSTGRES_DB=" "$env_file" | cut -d'=' -f2)
+
+    if [ -z "$pg_user" ] || [ -z "$pg_password" ] || [ -z "$pg_db" ]; then
+        print_warning "Skipping Postgres sync (missing POSTGRES_* vars)."
+        return 0
+    fi
+
+    print_message "Syncing Postgres credentials for role '$pg_user' and database '$pg_db'..."
+    if ! docker compose -p "$project_name" exec -T db sh -lc "psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'\nDO $$\nBEGIN\n   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$pg_user') THEN\n      CREATE ROLE $pg_user LOGIN PASSWORD '$pg_password';\n   ELSE\n      ALTER ROLE $pg_user WITH LOGIN PASSWORD '$pg_password';\n   END IF;\nEND\n$$;\n\nDO $$\nBEGIN\n   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '$pg_db') THEN\n      CREATE DATABASE $pg_db OWNER $pg_user;\n   ELSE\n      ALTER DATABASE $pg_db OWNER TO $pg_user;\n   END IF;\nEND\n$$;\nSQL\n"; then
+        print_warning "Postgres sync failed (continuing)."
+    else
+        print_success "Postgres credentials synced."
+    fi
+}
+
 # Function to run post-deployment tasks
 run_post_deployment_tasks() {
     local project_name=$(get_compose_project_name)
     
     print_message "Running post-deployment tasks..."
     
+    # Ensure DB role/password/db match env before migrations
+    sync_postgres_credentials
+
     # Run migrations
     print_message "Running database migrations..."
     if docker compose -p "$project_name" exec -T api python manage.py migrate --noinput; then

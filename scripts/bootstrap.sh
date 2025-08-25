@@ -188,6 +188,7 @@ bootstrap_development() {
     # Replace shared values
     sed -i.bak "s/PROJECT_NAME=launchkit/PROJECT_NAME=$SHARED_PROJECT_NAME/" "$env_file"
     sed -i.bak "s/COMPOSE_PROJECT_NAME=launchkit-dev/COMPOSE_PROJECT_NAME=${SHARED_PROJECT_SLUG}-dev/" "$env_file"
+    sed -i.bak "s/^POSTGRES_USER=.*/POSTGRES_USER=launchkit/" "$env_file"
     sed -i.bak "s/POSTGRES_PASSWORD=postgres/POSTGRES_PASSWORD=$SHARED_DB_PASSWORD/" "$env_file"
     sed -i.bak "s|DATABASE_URL=postgres://postgres:postgres@db:5432/launchkit_dev|DATABASE_URL=postgres://launchkit:$SHARED_DB_PASSWORD@db:5432/launchkit_dev|" "$env_file"
     sed -i.bak "s/RABBITMQ_DEFAULT_PASS=guest/RABBITMQ_DEFAULT_PASS=$SHARED_RABBITMQ_PASSWORD/" "$env_file"
@@ -263,6 +264,7 @@ bootstrap_production() {
     # Replace shared values (using same passwords as development)
     sed -i.bak "s/PROJECT_NAME=launchkit/PROJECT_NAME=$SHARED_PROJECT_NAME/" "$env_file"
     sed -i.bak "s/COMPOSE_PROJECT_NAME=launchkit-prod/COMPOSE_PROJECT_NAME=${SHARED_PROJECT_SLUG}-prod/" "$env_file"
+    sed -i.bak "s/^POSTGRES_USER=.*/POSTGRES_USER=launchkit/" "$env_file"
     sed -i.bak "s/POSTGRES_PASSWORD=prod-change-me/POSTGRES_PASSWORD=$SHARED_DB_PASSWORD/" "$env_file"
     sed -i.bak "s|DATABASE_URL=postgres://launchkit:prod-change-me@db:5432/launchkit_prod|DATABASE_URL=postgres://launchkit:$SHARED_DB_PASSWORD@db:5432/launchkit_prod|" "$env_file"
     sed -i.bak "s/RABBITMQ_DEFAULT_PASS=prod-change-me/RABBITMQ_DEFAULT_PASS=$SHARED_RABBITMQ_PASSWORD/" "$env_file"
