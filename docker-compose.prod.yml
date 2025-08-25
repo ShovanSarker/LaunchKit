@@ -203,12 +203,15 @@ services:
   nginx:
     image: nginx:alpine
     container_name: ${COMPOSE_PROJECT_NAME:-launchkit-prod}_nginx
-    environment:
-      - PUBLIC_DOMAIN_API=${PUBLIC_DOMAIN_API}
-      - PUBLIC_DOMAIN_APP=${PUBLIC_DOMAIN_APP}
-    command: /bin/sh -c "envsubst '$PUBLIC_DOMAIN_API $PUBLIC_DOMAIN_APP' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
+    command: >
+      /bin/sh -c "
+      envsubst '$$PUBLIC_DOMAIN_API $$PUBLIC_DOMAIN_APP $$ENABLE_HTTPS' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf &&
+      envsubst '$$PUBLIC_DOMAIN_API $$PUBLIC_DOMAIN_APP' < /etc/nginx/https.conf.template > /etc/nginx/https.conf &&
+      nginx -g 'daemon off;'
+      "
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+      - ./infra/nginx/https.conf:/etc/nginx/https.conf.template:ro
       - ./infra/auth/htpasswd:/etc/nginx/.htpasswd:ro
       - static_data:/var/www/static:ro
       - media_data:/var/www/media:ro

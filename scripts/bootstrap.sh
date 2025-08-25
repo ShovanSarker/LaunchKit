@@ -252,6 +252,14 @@ bootstrap_production() {
         fi
     done
     
+    local enable_https=""
+    while [ "$enable_https" != "true" ] && [ "$enable_https" != "false" ]; do
+        enable_https=$(get_input "Enable HTTPS? (true/false)" "false")
+        if [ "$enable_https" != "true" ] && [ "$enable_https" != "false" ]; then
+            print_error "Please choose 'true' or 'false'"
+        fi
+    done
+    
     # Generate production-specific secret
     local prod_secret=$(generate_random_string)
     
@@ -276,6 +284,7 @@ bootstrap_production() {
     sed -i.bak "s/PUBLIC_DOMAIN_APP=app.example.com/PUBLIC_DOMAIN_APP=$app_domain/" "$env_file"
     sed -i.bak "s/ADMIN_EMAIL=admin@example.com/ADMIN_EMAIL=$admin_email/" "$env_file"
     sed -i.bak "s/DEFAULT_FROM_EMAIL=noreply@example.com/DEFAULT_FROM_EMAIL=noreply@$api_domain/" "$env_file"
+    sed -i.bak "s/ENABLE_HTTPS=false/ENABLE_HTTPS=$enable_https/" "$env_file"
     
     # Generate Flower password and update it
     local flower_password=$(generate_random_string | cut -c1-16)
