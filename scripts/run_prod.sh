@@ -303,7 +303,18 @@ sync_postgres_credentials() {
     fi
 
     print_message "Syncing Postgres credentials for role '$pg_user' and database '$pg_db'..."
-    if ! docker compose -p "$project_name" exec -T db sh -lc "psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'\nDO $$\nBEGIN\n   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$pg_user') THEN\n      CREATE ROLE $pg_user LOGIN PASSWORD '$pg_password';\n   ELSE\n      ALTER ROLE $pg_user WITH LOGIN PASSWORD '$pg_password';\n   END IF;\nEND\n$$;\n\nDO $$\nBEGIN\n   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '$pg_db') THEN\n      CREATE DATABASE $pg_db OWNER $pg_user;\n   ELSE\n      ALTER DATABASE $pg_db OWNER TO $pg_user;\n   END IF;\nEND\n$$;\nSQL\n"; then
+    if ! docker compose -p "$project_name" exec -T db sh -lc "set -e; \
+PGUSER='$pg_user'; PGPASS='$pg_password'; PGDB='$pg_db'; \
+if psql -U postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='\\''$pg_user'\\''\" | grep -q 1; then \
+  psql -U postgres -v ON_ERROR_STOP=1 -c \"ALTER ROLE \\\"$pg_user\\\" WITH LOGIN PASSWORD '"'$pg_password'"'\"; \
+else \
+  psql -U postgres -v ON_ERROR_STOP=1 -c \"CREATE ROLE \\\"$pg_user\\\" WITH LOGIN PASSWORD '"'$pg_password'"''\"; \
+fi; \
+if psql -U postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='\\''$pg_db'\\''\" | grep -q 1; then \
+  psql -U postgres -v ON_ERROR_STOP=1 -c \"ALTER DATABASE \\\"$pg_db\\\" OWNER TO \\\"$pg_user\\\";\"; \
+else \
+  psql -U postgres -v ON_ERROR_STOP=1 -c \"CREATE DATABASE \\\"$pg_db\\\" OWNER \\\"$pg_user\\\";\"; \
+fi"; then
         print_warning "Postgres sync failed (continuing)."
     else
         print_success "Postgres credentials synced."
