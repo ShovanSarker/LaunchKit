@@ -121,6 +121,13 @@ create_htpasswd() {
     print_success "Created htpasswd file: $htpasswd_file"
 }
 
+# Function to remove old environment files
+cleanup_env_files() {
+    print_message "Cleaning up old environment files..."
+    mkdir -p "$ENV_DIR"
+    rm -f "${ENV_DIR}/.env.dev" "${ENV_DIR}/.env.prod" "${ENV_DIR}/.env.dev.bak" "${ENV_DIR}/.env.prod.bak"
+}
+
 # Function to get or generate shared configuration
 get_shared_config() {
     local config_file="${CONFIG_DIR}/.shared_config.json"
@@ -168,11 +175,6 @@ bootstrap_development() {
         exit 1
     fi
     
-    if ! check_file_exists "$env_file"; then
-        print_message "Skipping development environment setup"
-        return 0
-    fi
-    
     # Get shared configuration
     get_shared_config
     
@@ -216,11 +218,6 @@ bootstrap_production() {
     if [ ! -f "$template_file" ]; then
         print_error "Production template not found: $template_file"
         exit 1
-    fi
-    
-    if ! check_file_exists "$env_file"; then
-        print_message "Skipping production environment setup"
-        return 0
     fi
     
     # Get shared configuration
@@ -361,6 +358,9 @@ main() {
     # Bootstrap based on environment
     local env_file=""
     
+    # Always remove old env files before (re)creating
+    cleanup_env_files
+
     if [ "$environment" = "development" ]; then
         bootstrap_development
         env_file="${ENV_DIR}/.env.dev"

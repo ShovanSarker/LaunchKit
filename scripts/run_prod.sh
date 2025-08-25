@@ -304,16 +304,23 @@ sync_postgres_credentials() {
 
     print_message "Syncing Postgres credentials for role '$pg_user' and database '$pg_db'..."
     if ! docker compose -p "$project_name" exec -T db sh -lc "set -e; \
-PGUSER='$pg_user'; PGPASS='$pg_password'; PGDB='$pg_db'; \
-if psql -U postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='\\''$pg_user'\\''\" | grep -q 1; then \
-  psql -U postgres -v ON_ERROR_STOP=1 -c \"ALTER ROLE \\\"$pg_user\\\" WITH LOGIN PASSWORD '"'$pg_password'"'\"; \
-else \
-  psql -U postgres -v ON_ERROR_STOP=1 -c \"CREATE ROLE \\\"$pg_user\\\" WITH LOGIN PASSWORD '"'$pg_password'"''\"; \
+export PGPASSWORD=\"\$POSTGRES_PASSWORD\"; \
+SU=\"\${POSTGRES_USER:-postgres}\"; \
+# Verify we can connect with the configured superuser
+if ! psql -U \"\$SU\" -tAc 'SELECT 1' >/dev/null 2>&1; then \
+  exit 2; \
 fi; \
-if psql -U postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='\\''$pg_db'\\''\" | grep -q 1; then \
-  psql -U postgres -v ON_ERROR_STOP=1 -c \"ALTER DATABASE \\\"$pg_db\\\" OWNER TO \\\"$pg_user\\\";\"; \
+# Create or update role
+if psql -U \"\$SU\" -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${pg_user}'\" | grep -q 1; then \
+  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"ALTER ROLE \""${pg_user}"\" WITH LOGIN PASSWORD '${pg_password}'\"; \
 else \
-  psql -U postgres -v ON_ERROR_STOP=1 -c \"CREATE DATABASE \\\"$pg_db\\\" OWNER \\\"$pg_user\\\";\"; \
+  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"CREATE ROLE \""${pg_user}"\" WITH LOGIN PASSWORD '${pg_password}'\"; \
+fi; \
+# Create database if missing and ensure ownership
+if psql -U \"\$SU\" -tAc \"SELECT 1 FROM pg_database WHERE datname='${pg_db}'\" | grep -q 1; then \
+  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"ALTER DATABASE \""${pg_db}"\" OWNER TO \""${pg_user}"\";\"; \
+else \
+  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"CREATE DATABASE \""${pg_db}"\" OWNER \""${pg_user}"\";\"; \
 fi"; then
         print_warning "Postgres sync failed (continuing)."
     else
