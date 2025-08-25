@@ -304,24 +304,38 @@ sync_postgres_credentials() {
 
     print_message "Syncing Postgres credentials for role '$pg_user' and database '$pg_db'..."
     if ! docker compose -p "$project_name" exec -T db sh -lc "set -e; \
-export PGPASSWORD=\"\$POSTGRES_PASSWORD\"; \
-SU=\"\${POSTGRES_USER:-postgres}\"; \
-# Verify we can connect with the configured superuser
-if ! psql -U \"\$SU\" -tAc 'SELECT 1' >/dev/null 2>&1; then \
-  exit 2; \
-fi; \
-# Create or update role
-if psql -U \"\$SU\" -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${pg_user}'\" | grep -q 1; then \
-  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"ALTER ROLE \""${pg_user}"\" WITH LOGIN PASSWORD '${pg_password}'\"; \
-else \
-  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"CREATE ROLE \""${pg_user}"\" WITH LOGIN PASSWORD '${pg_password}'\"; \
-fi; \
-# Create database if missing and ensure ownership
-if psql -U \"\$SU\" -tAc \"SELECT 1 FROM pg_database WHERE datname='${pg_db}'\" | grep -q 1; then \
-  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"ALTER DATABASE \""${pg_db}"\" OWNER TO \""${pg_user}"\";\"; \
-else \
-  psql -U \"\$SU\" -v ON_ERROR_STOP=1 -c \"CREATE DATABASE \""${pg_db}"\" OWNER \""${pg_user}"\";\"; \
-fi"; then
+PGDB='${pg_db}'; APPUSER='${pg_user}'; APPPASS='${pg_password}'; \
+# Try several superuser candidates and connection modes
+try_connect() { \
+  local su=\"$1\"; \
+  local use_pass=\"$2\"; \
+  if [ \"$use_pass\" = '1' ]; then export PGPASSWORD=\"\$POSTGRES_PASSWORD\"; else unset PGPASSWORD; fi; \
+  psql -h localhost -d postgres -U \"$su\" -tAc 'SELECT 1' >/dev/null 2>&1; \
+}; \
+run_sql() { \
+  local su=\"$1\"; export PGPASSWORD=\"\$POSTGRES_PASSWORD\"; \
+  # Ensure role exists with desired password
+  if psql -h localhost -d postgres -U \"$su\" -tAc \"SELECT 1 FROM pg_roles WHERE rolname='\''$APPUSER'\''\" | grep -q 1; then \
+    psql -h localhost -d postgres -U \"$su\" -v ON_ERROR_STOP=1 -c \"ALTER ROLE \""$APPUSER"\" WITH LOGIN PASSWORD '"$APPPASS"'\"; \
+  else \
+    psql -h localhost -d postgres -U \"$su\" -v ON_ERROR_STOP=1 -c \"CREATE ROLE \""$APPUSER"\" WITH LOGIN PASSWORD '"$APPPASS"'\"; \
+  fi; \
+  # Ensure database exists and owned by app role
+  if psql -h localhost -d postgres -U \"$su\" -tAc \"SELECT 1 FROM pg_database WHERE datname='\''$PGDB'\''\" | grep -q 1; then \
+    psql -h localhost -d postgres -U \"$su\" -v ON_ERROR_STOP=1 -c \"ALTER DATABASE \""$PGDB"\" OWNER TO \""$APPUSER"\";\"; \
+  else \
+    psql -h localhost -d postgres -U \"$su\" -v ON_ERROR_STOP=1 -c \"CREATE DATABASE \""$PGDB"\" OWNER \""$APPUSER"\";\"; \
+  fi; \
+}; \
+SUCCESS=0; \
+for su in \"\$POSTGRES_USER\" postgres launchkit; do \
+  if [ -n \"$su\" ]; then \
+    if try_connect \"$su\" 1 || try_connect \"$su\" 0; then \
+      run_sql \"$su\"; SUCCESS=1; break; \
+    fi; \
+  fi; \
+done; \
+test \"$SUCCESS\" = 1"; then
         print_warning "Postgres sync failed (continuing)."
     else
         print_success "Postgres credentials synced."
