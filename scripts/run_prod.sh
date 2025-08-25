@@ -413,11 +413,25 @@ print_service_info() {
 # Function to handle script arguments
 handle_arguments() {
     case "${1:-}" in
+        "reset-db")
+            local project_name=$(get_compose_project_name)
+            print_message "Stopping stack and removing project volumes..."
+            docker compose -p "$project_name" down -v || true
+            print_success "Volumes removed. Rebuilding and starting fresh..."
+            # Continue normal startup after resetting volumes
+            ;;
         "stop")
             local project_name=$(get_compose_project_name)
             print_message "Stopping production stack..."
             docker compose -p "$project_name" down
             print_success "Production stack stopped"
+            exit 0
+            ;;
+        "teardown")
+            local project_name=$(get_compose_project_name)
+            print_message "Tearing down production stack and removing all volumes..."
+            docker compose -p "$project_name" down -v
+            print_success "Stack and volumes removed"
             exit 0
             ;;
         "restart")
@@ -447,10 +461,12 @@ handle_arguments() {
             echo "Commands:"
             echo "  (no args)  Start the production stack"
             echo "  stop       Stop the production stack"
+            echo "  teardown   Stop stack and remove all volumes (including DB)"
             echo "  restart    Restart the production stack"
             echo "  logs       Show logs (optionally specify service)"
             echo "  status     Show service status"
             echo "  build      Build images"
+            echo "  reset-db   Stop stack, remove volumes, then rebuild and start"
             echo "  help       Show this help message"
             exit 0
             ;;
